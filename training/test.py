@@ -182,7 +182,17 @@ def main():
         except:
             epoch = 0
         ckpt = torch.load(weights_path, map_location=device)
-        model.load_state_dict(ckpt, strict=True)
+        
+        new_state_dict = {}
+        state_dict = ckpt
+
+        # Strip 'module.' prefix if present
+        if any(k.startswith('module.') for k in state_dict.keys()):
+            new_state_dict = {k[7:]: v for k, v in state_dict.items()}
+        else:
+            new_state_dict = state_dict
+
+        model.load_state_dict(new_state_dict, strict=True)
         print('===> Load checkpoint done!')
     else:
         print('Fail to load the pre-trained weights')

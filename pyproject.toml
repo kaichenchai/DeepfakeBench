@@ -1,0 +1,48 @@
+[project]
+name = "deepfakebench"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "albumentations==1.1.0",
+    "clip",
+    "dlib>=20.0.0",
+    "efficientnet-pytorch>=0.7.1",
+    "einops>=0.8.2",
+    "filterpy>=1.4.5",
+    "fvcore>=0.1.5.post20221221",
+    "imageio>=2.37.2",
+    "imgaug>=0.4.0",
+    "imutils>=0.5.4",
+    "kornia>=0.8.2",
+    "loralib>=0.1.2",
+    "numpy==1.26.4",
+    "opencv-python==4.6.0.66",
+    "pandas>=3.0.1",
+    "pillow>=12.1.1",
+    "pyyaml>=6.0.3",
+    "scikit-image>=0.26.0",
+    "scikit-learn>=1.8.0",
+    "scipy>=1.17.1",
+    "seaborn>=0.13.2",
+    "segmentation-models-pytorch>=0.5.0",
+    "setuptools>=82.0.0",
+    "simplejson>=3.20.2",
+    "tensorboard>=2.20.0",
+    "timm>=1.0.25",
+    "torch",
+    "torchaudio",
+    "torchtoolbox>=0.1.8.2",
+    "torchvision",
+    "tqdm>=4.67.3",
+    "transformers>=5.2.0",
+    "triton",
+]
+
+[tool.uv.sources]
+torch = { path = "torch-2.9.1+rocm7.2.0.lw.git7e1940d4-cp312-cp312-linux_x86_64.whl" }
+torchvision = { path = "torchvision-0.24.0+rocm7.2.0.gitb919bd0c-cp312-cp312-linux_x86_64.whl" }
+torchaudio = { path = "torchaudio-2.9.0+rocm7.2.0.gite3c6ee2b-cp312-cp312-linux_x86_64.whl" }
+triton = { path = "triton-3.5.1+rocm7.2.0.gita272dfa8-cp312-cp312-linux_x86_64.whl" }
+clip = { git = "https://github.com/openai/CLIP.git" }
