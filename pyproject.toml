@@ -43,18 +43,14 @@ dependencies = [
 [tool.uv.sources]
 clip = { git = "https://github.com/openai/CLIP.git" }
 torch = [
-  {marker = "sys_platform == 'linux'",
-  path = "torch-2.9.1+rocm7.2.0.lw.git7e1940d4-cp312-cp312-linux_x86_64.whl" },
+  {marker = "sys_platform == 'linux'", path = "torch-2.9.1+rocm7.2.0.lw.git7e1940d4-cp312-cp312-linux_x86_64.whl" },
 ]
 torchvision = [
-  {marker = "sys_platform == 'linux'",
-  path = "torchvision-0.24.0+rocm7.2.0.gitb919bd0c-cp312-cp312-linux_x86_64.whl" },
+  {marker = "sys_platform == 'linux'", path = "torchvision-0.24.0+rocm7.2.0.gitb919bd0c-cp312-cp312-linux_x86_64.whl" },
 ]
 torchaudio = [
-  {marker = "sys_platform == 'linux'",
-  path = "torchaudio-2.9.0+rocm7.2.0.gite3c6ee2b-cp312-cp312-linux_x86_64.whl" },
+  {marker = "sys_platform == 'linux'", path = "torchaudio-2.9.0+rocm7.2.0.gite3c6ee2b-cp312-cp312-linux_x86_64.whl" },
 ]
 triton = [
-  {marker = "sys_platform == 'linux'",
-  path = "triton-3.5.1+rocm7.2.0.gita272dfa8-cp312-cp312-linux_x86_64.whl" },
+  {marker = "sys_platform == 'linux'", path = "triton-3.5.1+rocm7.2.0.gita272dfa8-cp312-cp312-linux_x86_64.whl" },
 ]
