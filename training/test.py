@@ -2,6 +2,7 @@
 eval pretained model.
 """
 import os
+import sys
 import numpy as np
 from os.path import join
 import cv2
@@ -161,7 +162,15 @@ def main():
     if args.weights_path:
         config['weights_path'] = args.weights_path
         weights_path = args.weights_path
-    
+
+    # Auto-detect platform: disable CUDA on macOS, enable on other platforms
+    if sys.platform == 'darwin':
+        config['cuda'] = False
+        config['cudnn'] = False
+    else:
+        config['cuda'] = True
+        config['cudnn'] = True
+
     # init seed
     init_seed(config)
 
@@ -182,7 +191,17 @@ def main():
         except:
             epoch = 0
         ckpt = torch.load(weights_path, map_location=device)
-        model.load_state_dict(ckpt, strict=True)
+        
+        new_state_dict = {}
+        state_dict = ckpt
+
+        # Strip 'module.' prefix if present
+        if any(k.startswith('module.') for k in state_dict.keys()):
+            new_state_dict = {k[7:]: v for k, v in state_dict.items()}
+        else:
+            new_state_dict = state_dict
+
+        model.load_state_dict(new_state_dict, strict=True)
         print('===> Load checkpoint done!')
     else:
         print('Fail to load the pre-trained weights')
