@@ -4,6 +4,7 @@
 # description: training code.
 
 import os
+import sys
 import argparse
 from os.path import join
 import cv2
@@ -241,6 +242,15 @@ def main():
         config['test_dataset'] = args.test_dataset
     config['save_ckpt'] = args.save_ckpt
     config['save_feat'] = args.save_feat
+
+    # Auto-detect platform: disable CUDA on macOS, enable on other platforms
+    if sys.platform == 'darwin':
+        config['cuda'] = False
+        config['cudnn'] = False
+    else:
+        config['cuda'] = True
+        config['cudnn'] = True
+
     if config['lmdb']:
         config['dataset_json_folder'] = 'preprocessing/dataset_json_v3'
     # create logger

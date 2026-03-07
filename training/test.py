@@ -2,6 +2,7 @@
 eval pretained model.
 """
 import os
+import sys
 import numpy as np
 from os.path import join
 import cv2
@@ -161,7 +162,15 @@ def main():
     if args.weights_path:
         config['weights_path'] = args.weights_path
         weights_path = args.weights_path
-    
+
+    # Auto-detect platform: disable CUDA on macOS, enable on other platforms
+    if sys.platform == 'darwin':
+        config['cuda'] = False
+        config['cudnn'] = False
+    else:
+        config['cuda'] = True
+        config['cudnn'] = True
+
     # init seed
     init_seed(config)
 

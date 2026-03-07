@@ -27,10 +27,10 @@ from transformers import AutoProcessor, CLIPModel, ViTModel, ViTConfig
 logger = logging.getLogger(__name__)
 
 
-@DETECTOR.register_module(module_name='effort')
-class EffortDetector(nn.Module):
+@DETECTOR.register_module(module_name='effort_causal')
+class EffortCausalDetector(nn.Module):
     def __init__(self, config=None):
-        super(EffortDetector, self).__init__()
+        super(EffortCausalDetector, self).__init__()
         self.config = config
         self.backbone = self.build_backbone(config)
         self.head = nn.Linear(1024, 2)
@@ -301,7 +301,3 @@ def replace_with_svd_residual(module, r):
         return new_module
     else:
         return module
-
-
-if __name__ == "__main__":
-    EffortDetector()
