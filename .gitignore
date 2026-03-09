@@ -2,7 +2,6 @@
 *.dat
 *.whl
 *.pth
-*.json
 /datasets/
 
 # Byte-compiled / optimized / DLL files

@@ -33,8 +33,9 @@ class EffortCausalDetector(nn.Module):
         super(EffortCausalDetector, self).__init__()
         self.config = config
         self.backbone = self.build_backbone(config)
+        self.counterfactual_model = self.backbone
         self.head = nn.Linear(1024, 2)
-        self.loss_func = nn.CrossEntropyLoss()
+        self.loss_func = LOSSFUNC[config['loss_func']]
         self.prob, self.label = [], []
         self.correct, self.total = 0, 0
 
@@ -59,6 +60,8 @@ class EffortCausalDetector(nn.Module):
         print('Number of total parameters: {}, tunable parameters: {}'.format(num_total_param, num_param))
 
         return clip_model.vision_model
+
+    def build_counterfactual_model()
 
     def features(self, data_dict: dict) -> torch.tensor:
         feat = self.backbone(data_dict['image'])['pooler_output']

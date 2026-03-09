@@ -23,6 +23,6 @@ from .patch_consistency_loss import PatchConsistencyLoss
 from .region_independent_loss import RegionIndependentLoss
 from .supercontrast_loss import SupConLoss
 
-from .independence_loss import IndependenceLoss
+from .causal_loss import CausalLoss
 from .hsic_loss import HSICLoss
 from .counterfactual_loss import CounterfactualLoss
