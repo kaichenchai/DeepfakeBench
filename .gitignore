@@ -4,6 +4,8 @@
 *.pth
 /datasets/
 
+*/models--openai--clip-vit-large-patch14/*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
