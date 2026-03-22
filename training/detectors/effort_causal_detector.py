@@ -135,7 +135,8 @@ class EffortCausalDetector(nn.Module):
         if mask_real.sum() > 0:
             pred_real = pred[mask_real]
             label_real = label[mask_real]
-            loss_real = self.loss_func(pred_real, label_real, data_dict)
+            data_dict_real = {k: v[mask_real] if isinstance(v, torch.Tensor) and v.shape[0] == label.shape[0] else v for k, v in data_dict.items()}
+            loss_real = self.loss_func(pred_real, label_real, data_dict_real)
         else:
             # No real samples in batch
             loss_real = torch.tensor(0.0, device=pred.device)
@@ -144,7 +145,8 @@ class EffortCausalDetector(nn.Module):
         if mask_fake.sum() > 0:
             pred_fake = pred[mask_fake]
             label_fake = label[mask_fake]
-            loss_fake = self.loss_func(pred_fake, label_fake, data_dict)
+            data_dict_fake = {k: v[mask_fake] if isinstance(v, torch.Tensor) and v.shape[0] == label.shape[0] else v for k, v in data_dict.items()}
+            loss_fake = self.loss_func(pred_fake, label_fake, data_dict_fake)
         else:
             # No fake samples in batch
             loss_fake = torch.tensor(0.0, device=pred.device)

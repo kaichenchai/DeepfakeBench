@@ -5,6 +5,7 @@
 /datasets/
 
 */models--openai--clip-vit-large-patch14/*
+/logs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

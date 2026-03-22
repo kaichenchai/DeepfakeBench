@@ -20,6 +20,9 @@ class HSICLoss(AbstractLossClass):
 
     def HSIC(self, x, y, s_x=1, s_y=1):
         m,_ = x.shape #batch size
+        if m <= 1:
+            return torch.tensor(0.0, device=x.device, requires_grad=True)
+            
         K = self.GaussianKernelMatrix(x,s_x)
         L = self.GaussianKernelMatrix(y,s_y)
         device = x.device
@@ -29,6 +32,13 @@ class HSICLoss(AbstractLossClass):
         return HSIC
         
     def forward(self, pred, label):
+        # Ensure pred and label are 2D - for HSIC calculation with torch.mm
+        if pred.dim() == 1:
+            pred = pred.unsqueeze(1)
+        if label.dim() == 1:
+            # Convert to float since we are computing Euclidean distances
+            label = label.float().unsqueeze(1) 
+            
         hsic_loss = self.HSIC(pred, label)
         return hsic_loss
     
