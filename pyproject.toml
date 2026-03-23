@@ -38,6 +38,7 @@ dependencies = [
     "tqdm>=4.67.3",
     "transformers>=5.2.0",
     "triton>=3.5.1 ; sys_platform == 'linux'",
+    "wandb>=0.25.1",
 ]
 
 [tool.uv.sources]

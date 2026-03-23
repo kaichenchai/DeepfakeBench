@@ -17,6 +17,7 @@ import numpy as np
 from datetime import timedelta
 from copy import deepcopy
 from PIL import Image as pil_image
+import wandb
 
 import torch
 import torch.nn as nn
@@ -323,9 +324,9 @@ def main():
     if scheduler is not None:
         scheduler.step()
 
-    # close the tensorboard writers
-    for writer in trainer.writers.values():
-        writer.close()
+    # finish wandb run
+    if hasattr(wandb, 'run') and wandb.run is not None:
+        wandb.finish()
 
 
 
