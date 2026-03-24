@@ -1,0 +1,28 @@
+migration:
+  # Source directory containing historical experiments
+  source_dir: "./logs/training/"
+
+  # Wandb configuration
+  wandb:
+    project: "deepfakebench"
+    entity: null  # Optional organization/team name
+    tags:
+      - "historical"
+      - "migrated"
+      - "tensorboard-conversion"
+
+  # Control which experiments to migrate
+  experiments: ["effort_2026-03-20-00-25-30", "effort_causal_2026-03-22-15-18-04"]  # or specify a list like ["effort_2026-03-20-00-25-30"]
+
+  # Data inclusion options (reduce size and upload time)
+  include_predictions: true  # Skip prediction arrays (saves minimal space ~4-12KB)
+  include_checkpoints: false  # Skip model weights (saves 97% of space ~13.6GB)
+
+  # Performance and reliability settings
+  batch_size: 50              # Metrics per wandb.log() call
+  max_retries: 3              # Retry failed uploads
+  rate_limit_delay: 0.1       # Seconds between API calls (prevent overload)
+  progress_tracking: true     # Show progress bars
+
+  # Logging and recovery
+  log_file: "./logs/migration.log"
