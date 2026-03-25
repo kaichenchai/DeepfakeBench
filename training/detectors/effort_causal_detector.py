@@ -124,7 +124,18 @@ class EffortCausalDetector(nn.Module):
         pred = pred_dict['cls']     # Tensor of shape [batch_size, num_classes]
 
         # Compute overall loss using all samples
-        loss = self.loss_func(pred, label, data_dict)
+        loss_result = self.loss_func(pred, label, data_dict)
+
+        # Check if loss is a dict or scalar
+        if isinstance(loss_result, dict):
+            # Loss function returned a dict with individual components
+            overall_loss = loss_result['overall']
+            # Start with all loss components from the loss function
+            loss_dict = loss_result.copy()
+        else:
+            # Loss function returned a scalar (backward compatibility)
+            overall_loss = loss_result
+            loss_dict = {'overall': overall_loss}
 
         # Create masks for real and fake classes
         mask_real = label == 0  # Boolean tensor
@@ -135,7 +146,9 @@ class EffortCausalDetector(nn.Module):
             pred_real = pred[mask_real]
             label_real = label[mask_real]
             data_dict_real = {k: v[mask_real] if isinstance(v, torch.Tensor) and v.shape[0] == label.shape[0] else v for k, v in data_dict.items()}
-            loss_real = self.loss_func(pred_real, label_real, data_dict_real)
+            loss_real_result = self.loss_func(pred_real, label_real, data_dict_real)
+            # Extract scalar value if dict, otherwise use as-is
+            loss_real = loss_real_result['overall'] if isinstance(loss_real_result, dict) else loss_real_result
         else:
             # No real samples in batch
             loss_real = torch.tensor(0.0, device=pred.device)
@@ -145,22 +158,21 @@ class EffortCausalDetector(nn.Module):
             pred_fake = pred[mask_fake]
             label_fake = label[mask_fake]
             data_dict_fake = {k: v[mask_fake] if isinstance(v, torch.Tensor) and v.shape[0] == label.shape[0] else v for k, v in data_dict.items()}
-            loss_fake = self.loss_func(pred_fake, label_fake, data_dict_fake)
+            loss_fake_result = self.loss_func(pred_fake, label_fake, data_dict_fake)
+            # Extract scalar value if dict, otherwise use as-is
+            loss_fake = loss_fake_result['overall'] if isinstance(loss_fake_result, dict) else loss_fake_result
         else:
             # No fake samples in batch
             loss_fake = torch.tensor(0.0, device=pred.device)
-        
+
 
         # loss2 = self.compute_weight_loss()
         # overall_loss = loss + loss2
 
-        # Return a dictionary with all losses
-        loss_dict = {
-            'overall': loss,
-            'real_loss': loss_real,
-            'fake_loss': loss_fake,
-            # 'erank_loss': loss2
-        }
+        # Add real_loss and fake_loss to the dict
+        loss_dict['real_loss'] = loss_real
+        loss_dict['fake_loss'] = loss_fake
+        # 'erank_loss': loss2
         return loss_dict
 
     def get_train_metrics(self, data_dict: dict, pred_dict: dict) -> dict:
