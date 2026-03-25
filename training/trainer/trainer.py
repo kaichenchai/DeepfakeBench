@@ -23,7 +23,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.nn import DataParallel
-from torch.utils.tensorboard import SummaryWriter
+import wandb
 from metrics.base_metrics_class import Recorder
 from torch.optim.swa_utils import AveragedModel, SWALR
 from torch import distributed as dist
@@ -49,14 +49,14 @@ class Trainer(object):
         ):
         # check if all the necessary components are implemented
         if config is None or model is None or optimizer is None or logger is None:
-            raise ValueError("config, model, optimizier, logger, and tensorboard writer must be implemented")
+            raise ValueError("config, model, optimizier, logger must be implemented")
 
         self.config = config
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.swa_model = swa_model
-        self.writers = {}  # dict to maintain different tensorboard writers for each dataset and metric
+        self.wandb_enabled = False  # track wandb initialization status
         self.logger = logger
         self.metric_scoring = metric_scoring
         # maintain the best metric of all epochs
@@ -82,21 +82,22 @@ class Trainer(object):
             )
         os.makedirs(self.log_dir, exist_ok=True)
 
-    def get_writer(self, phase, dataset_key, metric_key):
-        writer_key = f"{phase}-{dataset_key}-{metric_key}"
-        if writer_key not in self.writers:
-            # update directory path
-            writer_path = os.path.join(
-                self.log_dir,
-                phase,
-                dataset_key,
-                metric_key,
-                "metric_board"
+        # Initialize wandb if enabled and only on rank 0
+        if self.config.get('wandb', {}).get('enabled', True) and self.config.get('local_rank', 0) == 0:
+            self.wandb_enabled = True
+            wandb.init(
+                project=self.config.get('wandb', {}).get('project', 'deepfakebench'),
+                name=f"{self.config['model_name']}_{self.timenow}",
+                config=self.config,
+                dir=self.config.get('wandb', {}).get('save_dir', './logs/wandb/'),
+                mode=self.config.get('wandb', {}).get('mode', 'online'),
+                tags=self.config.get('wandb', {}).get('tags', [])
             )
-            os.makedirs(writer_path, exist_ok=True)
-            # update writers dictionary
-            self.writers[writer_key] = SummaryWriter(writer_path)
-        return self.writers[writer_key]
+
+    def log_wandb_metrics(self, metrics_dict, step):
+        """Log metrics to wandb if enabled"""
+        if self.wandb_enabled and hasattr(wandb, 'run') and wandb.run is not None:
+            wandb.log(metrics_dict, step=step)
 
 
     def speed_up(self):
@@ -276,9 +277,9 @@ class Trainer(object):
                         loss_str += f"training-loss, {k}: not calculated"
                         continue
                     loss_str += f"training-loss, {k}: {v_avg}    "
-                    # tensorboard-1. loss
-                    writer = self.get_writer('train', ','.join(self.config['train_dataset']), k)
-                    writer.add_scalar(f'train_loss/{k}', v_avg, global_step=step_cnt)
+                    # wandb logging - training loss
+                    if self.wandb_enabled:
+                        self.log_wandb_metrics({f"train/loss/{k}": v_avg}, step=step_cnt)
                 self.logger.info(loss_str)
                 # info for metric
                 metric_str = f"Iter: {step_cnt}    "
@@ -288,9 +289,9 @@ class Trainer(object):
                         metric_str += f"training-metric, {k}: not calculated    "
                         continue
                     metric_str += f"training-metric, {k}: {v_avg}    "
-                    # tensorboard-2. metric
-                    writer = self.get_writer('train', ','.join(self.config['train_dataset']), k)
-                    writer.add_scalar(f'train_metric/{k}', v_avg, global_step=step_cnt)
+                    # wandb logging - training metrics
+                    if self.wandb_enabled:
+                        self.log_wandb_metrics({f"train/metric/{k}": v_avg}, step=step_cnt)
                 self.logger.info(metric_str)
 
 
@@ -392,13 +393,13 @@ class Trainer(object):
             # info for each dataset
             loss_str = f"dataset: {key}    step: {step}    "
             for k, v in losses_one_dataset_recorder.items():
-                writer = self.get_writer('test', key, k)
                 v_avg = v.average()
                 if v_avg == None:
                     print(f'{k} is not calculated')
                     continue
-                # tensorboard-1. loss
-                writer.add_scalar(f'test_losses/{k}', v_avg, global_step=step)
+                # wandb logging - test loss
+                if self.wandb_enabled:
+                    self.log_wandb_metrics({f"test/{key}/loss/{k}": v_avg}, step=step)
                 loss_str += f"testing-loss, {k}: {v_avg}    "
             self.logger.info(loss_str)
         # tqdm.write(loss_str)
@@ -407,14 +408,17 @@ class Trainer(object):
             if k == 'pred' or k == 'label' or k=='dataset_dict':
                 continue
             metric_str += f"testing-metric, {k}: {v}    "
-            # tensorboard-2. metric
-            writer = self.get_writer('test', key, k)
-            writer.add_scalar(f'test_metrics/{k}', v, global_step=step)
+            # wandb logging - test metrics
+            if self.wandb_enabled:
+                self.log_wandb_metrics({f"test/{key}/metric/{k}": v}, step=step)
         if 'pred' in metric_one_dataset:
             acc_real, acc_fake = self.get_respect_acc(metric_one_dataset['pred'], metric_one_dataset['label'])
             metric_str += f'testing-metric, acc_real:{acc_real}; acc_fake:{acc_fake}'
-            writer.add_scalar(f'test_metrics/acc_real', acc_real, global_step=step)
-            writer.add_scalar(f'test_metrics/acc_fake', acc_fake, global_step=step)
+            if self.wandb_enabled:
+                self.log_wandb_metrics({
+                    f"test/{key}/metric/acc_real": acc_real,
+                    f"test/{key}/metric/acc_fake": acc_fake
+                }, step=step)
         self.logger.info(metric_str)
     def test_epoch(self, epoch, iteration, test_data_loaders, step):
         # set model to eval mode

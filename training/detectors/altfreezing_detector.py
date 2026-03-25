@@ -99,7 +99,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.nn import DataParallel
-from torch.utils.tensorboard import SummaryWriter
 
 from metrics.base_metrics_class import calculate_metrics_for_train
 
