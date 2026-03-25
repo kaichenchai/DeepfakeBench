@@ -26,4 +26,9 @@ class CausalLoss(AbstractLossClass):
                       self.hsic_weight * hsic_loss +
                       self.cf_weight * counterfactual_loss)
 
-        return total_loss
+        return {
+            'overall': total_loss,
+            'cross_entropy_loss': cross_entropy_loss,
+            'hsic_loss': hsic_loss,
+            'counterfactual_loss': counterfactual_loss
+        }
