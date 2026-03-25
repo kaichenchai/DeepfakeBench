@@ -7,6 +7,16 @@ dataset_json_folder: './preprocessing/dataset_json'
 SWA: False
 save_avg: True
 log_dir: ./logs/training/
+
+# Wandb experiment tracking
+wandb:
+  enabled: true
+  project: "deepfakebench"
+  entity: null  # Optional organization
+  mode: "online"  # online/offline/disabled
+  save_dir: "./logs/wandb/"
+  tags: []  # Optional tags for grouping experiments
+
 # label settings
 label_dict:
   # DFD

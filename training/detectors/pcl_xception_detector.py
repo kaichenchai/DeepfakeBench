@@ -42,7 +42,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.nn import DataParallel
-from torch.utils.tensorboard import SummaryWriter
 
 from dataset.I2G_dataset import I2GDataset
 from metrics.base_metrics_class import calculate_metrics_for_train
