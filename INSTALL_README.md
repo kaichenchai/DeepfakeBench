@@ -14,7 +14,6 @@ wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2/torchaudio-2.9.0%2Brocm
 ```
 Download the distribution from `uv sync`
 
-
 ## Installing on macos/windows (don't need ROCM)
 `uv sync --no-sources`
 
@@ -26,6 +25,13 @@ Download the distribution from `uv sync`
 - Labels: from above dataset link, may have to replace "\\" to "/" to get image paths reading properly
 - Effort Checkpoints: https://drive.google.com/drive/u/0/folders/19kQwGDjF18uk78EnnypxxOLaG4Aa4v1h
 
+### Using gdown to download large files from Google Drive
+Gdown can be used to download large files using the CLI
+- To download a folder at https://drive.google.com/drive/folders/1T4ajtH-7PTAmDYWjn27XNOONXs7KjQWk, use `gdown --folder 1T4ajtH-7PTAmDYWjn27XNOONXs7KjQWk`
+
+You may run into an error such as "Too many users have viewed or downloaded this file recently".
+To fix this, visit Google Drive on your local machine and a browser extension such as `Get cookies.txt LOCALLY` to copy your local cookies.
+Then replace the gdown `cookies.txt` file at `~/.cache/gdown/cookies.txt` with your cookies to download files without issues. 
 
 ## Troubleshooting
 May need to run `sudo apt-get install build-essential cmake` to get dlib to build
