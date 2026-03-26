@@ -19,11 +19,11 @@ Download the distribution from `uv sync`
 
 ## Repo Setup
 - Download OpenAI Clip weights from Google Drive: https://drive.google.com/drive/folders/1fm3Jd8lFMiSP1qgdmsxfqlJZGpr_bXsx
-- Point Effort model to downloaded weights folder
-- Download face features extraction model from: https://github.com/kaichenchai/Effort-AIGI-Detection/blob/main/DeepfakeBench/preprocessing/shape_predictor_81_face_landmarks.dat
+- Point Effort model to downloaded weights folder - default is in repo root, just need to download safetensors
+- Download face features extraction model from: https://github.com/kaichenchai/Effort-AIGI-Detection/blob/main/DeepfakeBench/preprocessing/shape_predictor_81_face_landmarks.dat with `curl -L -O curl -L -O https://github.com/kaichenchai/Effort-AIGI-Detection/raw/refs/heads/main/DeepfakeBench/preprocessing/shape_predictor_81_face_landmarks.dat` -  goes in ./preprocessing/dlib_tools/
 - Datasets: https://drive.google.com/drive/folders/1T4ajtH-7PTAmDYWjn27XNOONXs7KjQWk - place in datasets/rgb/name....
-- Labels: from above dataset link, may have to replace "\\" to "/" to get image paths reading properly
-- Effort Checkpoints: https://drive.google.com/drive/u/0/folders/19kQwGDjF18uk78EnnypxxOLaG4Aa4v1h
+- Labels: from above dataset link, may have to replace "\\" to "/" to get image paths reading properly - go in ./preprocessing/dataset.json
+- Effort Checkpoints: https://drive.google.com/drive/u/0/folders/19kQwGDjF18uk78EnnypxxOLaG4Aa4v1h - goes in ./training/pretrained
 
 ### Using gdown to download large files from Google Drive
 Gdown can be used to download large files using the CLI
@@ -32,6 +32,7 @@ Gdown can be used to download large files using the CLI
 You may run into an error such as "Too many users have viewed or downloaded this file recently".
 To fix this, visit Google Drive on your local machine and a browser extension such as `Get cookies.txt LOCALLY` to copy your local cookies.
 Then replace the gdown `cookies.txt` file at `~/.cache/gdown/cookies.txt` with your cookies to download files without issues. 
+You may need to cycle this `cookies.txt` file several times or on a per-folder download basis to download all necessary files for this repo.
 
 ## Troubleshooting
 May need to run `sudo apt-get install build-essential cmake` to get dlib to build
