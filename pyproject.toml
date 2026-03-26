@@ -12,6 +12,7 @@ dependencies = [
     "einops>=0.8.2",
     "filterpy>=1.4.5",
     "fvcore>=0.1.5.post20221221",
+    "gdown>=5.2.1",
     "imageio>=2.37.2",
     "imgaug>=0.4.0",
     "imutils>=0.5.4",
