@@ -19,6 +19,7 @@ class CausalLoss(AbstractLossClass):
         
     def forward(self, pred, label, input_data):
         cross_entropy_loss = self.cross_entropy(pred, label)
+        ### HSIC should be applied on feature decomposition, not (pred, label) ###
         hsic_loss = self.hsic(pred, label)
         counterfactual_loss = self.counterfactual(pred, label, input_data)
 
