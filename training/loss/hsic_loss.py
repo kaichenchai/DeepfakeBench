@@ -31,21 +31,24 @@ class HSICLoss(AbstractLossClass):
         HSIC = torch.trace(torch.mm(L,torch.mm(H,torch.mm(K,H))))/((m-1)**2)
         return HSIC
         
-    def forward(self, pred, label):
-        # Ensure pred and label are 2D - for HSIC calculation with torch.mm
-        if pred.dim() == 1:
-            pred = pred.unsqueeze(1)
-        if label.dim() == 1:
-            # Convert to float since we are computing Euclidean distances
-            label = label.float().unsqueeze(1) 
-            
-        hsic_loss = self.HSIC(pred, label)
+    def forward(self, frozen_features, residual_features):
+        # Ensure frozen_features and residual_features are 2D - for HSIC calculation with torch.mm
+        if frozen_features.dim() == 1:
+            frozen_features = frozen_features.unsqueeze(1)
+        if residual_features.dim() == 1:
+            residual_features = residual_features.unsqueeze(1)
+
+        hsic_loss = self.HSIC(frozen_features, residual_features)
         return hsic_loss
     
     
 if __name__ == "__main__":
-    pred = torch.randn(10, 512)
-    label = torch.randn(10, 512)
-    hsic_loss_func = HSICLoss()
-    loss = hsic_loss_func(pred, label)
-    print(loss)
+    from detectors.effort_detector import EffortDetector, SVDResidualLinear
+    detector = EffortDetector()
+    for module in detector.backbone.modules():
+        if isinstance(module, SVDResidualLinear):
+            frozen_features = module.weight_main.detach()
+            residual_features = module.U_residual @ torch.diag(module.S_residual) @ module.V_residual
+            hsic_loss_func = HSICLoss()
+            loss = hsic_loss_func(frozen_features, residual_features)
+            print(loss)
