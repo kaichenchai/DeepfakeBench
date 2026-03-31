@@ -1,3 +1,4 @@
+nohup.out
 *.safetensors
 *.dat
 *.whl
