@@ -114,9 +114,9 @@ class Effort_HSIC_CE_Detector(nn.Module):
 
         loss_dict = {
             'overall': loss,
-            'real_loss': loss_real,
-            'fake_loss': loss_fake,
-            'hsic_loss': hsic_loss if hsic_losses else torch.tensor(0.0, device=pred.device)
+            'real_loss': loss_real.detach(),
+            'fake_loss': loss_fake.detach(),
+            'hsic_loss': hsic_loss.detach() if hsic_losses else torch.tensor(0.0, device=pred.device)
         }
         return loss_dict
 
