@@ -87,7 +87,6 @@ class Effort_HSIC_CE_Detector(nn.Module):
         lambda_hsic = 1.0
 
         cross_entropy_loss = self.loss_func(pred, label)
-
         hsic_loss = torch.tensor(0.0, device=pred.device)
         hsic_losses = []
         # Only compute HSIC during training (when gradients are needed)
@@ -120,7 +119,8 @@ class Effort_HSIC_CE_Detector(nn.Module):
             'overall': loss,
             'real_loss': loss_real.detach(),
             'fake_loss': loss_fake.detach(),
-            'hsic_loss': hsic_loss.detach() if hsic_losses else torch.tensor(0.0, device=pred.device)
+            'hsic_loss': hsic_loss.detach() if hsic_losses else torch.tensor(0.0, device=pred.device),
+            'cross_entropy_loss': cross_entropy_loss.detach()
         }
         return loss_dict
 

@@ -142,8 +142,9 @@ class EffortDetector(nn.Module):
         # Return a dictionary with all losses
         loss_dict = {
             'overall': loss,
-            'real_loss': loss_real,
-            'fake_loss': loss_fake,
+            'real_loss': loss_real.detach(),
+            'fake_loss': loss_fake.detach(),
+            'cross_entropy_loss': loss.detach()
             # 'erank_loss': loss2
         }
         return loss_dict
