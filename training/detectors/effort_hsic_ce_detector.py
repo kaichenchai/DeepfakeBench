@@ -83,20 +83,24 @@ class Effort_HSIC_CE_Detector(nn.Module):
     def get_losses(self, data_dict: dict, pred_dict: dict) -> dict:
         label = data_dict['label']
         pred = pred_dict['cls']
-        
+
         lambda_hsic = 1.0
-        
+
         cross_entropy_loss = self.loss_func(pred, label)
 
         hsic_loss = torch.tensor(0.0, device=pred.device)
         hsic_losses = []
-        for module in self.backbone.modules():
-            if isinstance(module, SVDResidualLinear):
-                hsic_losses.append(module.compute_hsic_loss())
-        
-        if hsic_losses:
-            hsic_loss = sum(hsic_losses) / len(hsic_losses)
-        
+        # Only compute HSIC during training (when gradients are needed)
+        # Otherwise during testing run into OOM due to HSIC
+        # Saves us from having to store all of these large matricies during testing
+        if self.training:
+            for module in self.backbone.modules():
+                if isinstance(module, SVDResidualLinear):
+                    hsic_losses.append(module.compute_hsic_loss())
+
+            if hsic_losses:
+                hsic_loss = sum(hsic_losses) / len(hsic_losses)
+
         loss = cross_entropy_loss + lambda_hsic * hsic_loss
 
         mask_real = label == 0
