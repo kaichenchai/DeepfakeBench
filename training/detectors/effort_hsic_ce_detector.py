@@ -230,6 +230,8 @@ class SVDResidualLinear(nn.Module):
         if self.cached_main_features is None or self.cached_residual_features is None:
             return torch.tensor(0.0, device=self.weight_main.device)
         
+        assert self.cached_main_features.shape == self.cached_residual_features.shape, f"Main and residual features must have the same shape for HSIC loss computation: {self.cached_main_features.shape} vs {self.cached_residual_features.shape}"
+
         loss = 0
         # Shape of features is [batch, sequence_length, feature_dim]
         # Iterate over the batch dimension and compute HSIC for each instance, then average
