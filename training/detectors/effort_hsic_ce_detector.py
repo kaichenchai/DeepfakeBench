@@ -69,13 +69,8 @@ class Effort_HSIC_CE_Detector(nn.Module):
     def classifier(self, features: torch.tensor) -> torch.tensor:
         return self.head(features)
 
-    def get_orthogonal_loss(self, data_dict: dict, pred_dict: dict) -> dict:
-        label = data_dict['label']
-        pred = pred_dict['cls']
-        loss = self.loss_func(pred, label)
-        
+    def get_orthogonal_loss(self) -> dict:
         # Regularization term
-        lambda_reg = 0.1
         orthogonal_losses = []
         for module in self.backbone.modules():
             if isinstance(module, SVDResidualLinear):
@@ -83,8 +78,7 @@ class Effort_HSIC_CE_Detector(nn.Module):
                 orthogonal_losses.append(module.compute_orthogonal_loss())
         
         if orthogonal_losses:
-            reg_term = sum(orthogonal_losses)
-            loss += lambda_reg * reg_term
+            loss = sum(orthogonal_losses) / len(orthogonal_losses)
         
         return loss
 
@@ -126,13 +120,14 @@ class Effort_HSIC_CE_Detector(nn.Module):
 
         cross_entropy_loss = self.loss_func(pred, label)
         
-        overall_loss = cross_entropy_loss
+        overall_loss = 0
+        overall_loss += cross_entropy_loss
         
         # Only compute all of these other losses when training as they are not needed
         if self.training:
             if 'orthogonal' in self.config['loss_functions']['selected']:
                 lambda_orthogonal = self.config['loss_functions']['orthogonal']['lambda']
-                orthogonal_loss = self.get_orthogonal_loss(data_dict, pred_dict)
+                orthogonal_loss = self.get_orthogonal_loss()
                 scaled_orthogonal_loss = lambda_orthogonal * orthogonal_loss
                 overall_loss += scaled_orthogonal_loss
                 
