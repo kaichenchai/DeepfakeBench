@@ -43,12 +43,9 @@ class HSICLoss(AbstractLossClass):
     
     
 if __name__ == "__main__":
-    from detectors.effort_detector import EffortDetector, SVDResidualLinear
-    detector = EffortDetector()
-    for module in detector.backbone.modules():
-        if isinstance(module, SVDResidualLinear):
-            frozen_features = module.weight_main.detach()
-            residual_features = module.U_residual @ torch.diag(module.S_residual) @ module.V_residual
-            hsic_loss_func = HSICLoss()
-            loss = hsic_loss_func(frozen_features, residual_features)
-            print(loss)
+    # Example usage
+    hsic_loss_func = HSICLoss()
+    x = torch.randn(257, 1024)  # 257 samples, 1024 features each
+    y = torch.randn(257, 1024)  # 257 samples, 1024 features each
+    loss = hsic_loss_func(x, y)
+    print(f"HSIC Loss: {loss.item()}")

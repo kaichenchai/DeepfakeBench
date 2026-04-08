@@ -34,7 +34,6 @@ class Effort_HSIC_CE_Detector(nn.Module):
         super(Effort_HSIC_CE_Detector, self).__init__()
         self.config = config
         self.backbone = self.build_backbone(config)
-        self.counterfactual_model = self.build_counterfactual_model(self.backbone)
         self.head = nn.Linear(1024, 2)
         self.loss_func = nn.CrossEntropyLoss()
         self.prob, self.label = [], []
@@ -52,6 +51,7 @@ class Effort_HSIC_CE_Detector(nn.Module):
 
         # Apply SVD to self_attn layers only
         # ViT-L/14 224*224: 1024-1
+        # TODO test different levels of residual rank
         clip_model.vision_model = apply_svd_residual_to_self_attn(clip_model.vision_model, r=1024-1)
 
         for name, param in clip_model.vision_model.named_parameters():
@@ -61,17 +61,6 @@ class Effort_HSIC_CE_Detector(nn.Module):
         print('Number of total parameters: {}, tunable parameters: {}'.format(num_total_param, num_param))
 
         return clip_model.vision_model
-
-    def build_counterfactual_model(self, backbone):
-        cf_model = copy.deepcopy(backbone)
-        for module in cf_model.modules():
-            if isinstance(module, SVDResidualLinear) and module.S_residual is not None:
-                module.S_residual = nn.Parameter(
-                    torch.zeros_like(module.S_residual), requires_grad=False
-                )
-        for param in cf_model.parameters():
-            param.requires_grad = False
-        return cf_model
 
     def features(self, data_dict: dict) -> torch.tensor:
         feat = self.backbone(data_dict['image'])['pooler_output']
@@ -151,7 +140,7 @@ class SVDResidualLinear(nn.Module):
         super(SVDResidualLinear, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
-        self.r = r  # Number of top singular values to exclude
+        self.r = r  # Number of singular values to freeze (main weight rank)
 
         # Original weights (fixed)
         self.weight_main = nn.Parameter(torch.Tensor(out_features, in_features), requires_grad=False)
@@ -159,8 +148,11 @@ class SVDResidualLinear(nn.Module):
             self.weight_main.data.copy_(init_weight)
         else:
             nn.init.kaiming_uniform_(self.weight_main, a=math.sqrt(5))
+        
+        # For HSIC loss calculation        
         self.hsic_loss_func = HSICLoss()
-
+        self.cached_main_features = None
+        self.cached_residual_features = None
 
         # Bias
         if bias:
@@ -175,7 +167,7 @@ class SVDResidualLinear(nn.Module):
         else:
             return self.weight_main
 
-    def forward(self, x):
+    def original_forward(self, x):
         if hasattr(self, 'U_residual') and hasattr(self, 'V_residual') and self.S_residual is not None:
             # Reconstruct the residual weight
             residual_weight = self.U_residual @ torch.diag(self.S_residual) @ self.V_residual
@@ -186,6 +178,39 @@ class SVDResidualLinear(nn.Module):
             weight = self.weight_main
 
         return F.linear(x, weight, self.bias)
+
+    def forward(self, x):
+        # Compute main features        
+        main_features = F.linear(x, self.weight_main, None)
+        
+        if hasattr(self, 'U_residual') and hasattr(self, 'V_residual') and self.S_residual is not None:
+            # Reconstruct the residual weight
+            residual_weight = self.U_residual @ torch.diag(self.S_residual) @ self.V_residual
+            # calculate residual features
+            residual_features = F.linear(x, residual_weight, None)
+        else:
+            # If residual components are not set, use only the main weight
+            residual_features = torch.zeros_like(main_features)
+
+        out = main_features + residual_features
+        if self.bias is not None:
+            out += self.bias
+            
+        self.cached_main_features = main_features
+        self.cached_residual_features = residual_features
+                
+        # this is for checking the shapes of the features and that output from forward matches original_forward
+        # print(f"main_features shape: {main_features.shape}\nresidual_features shape: {residual_features.shape}")
+        # original_out = self.original_forward(x)
+        # print(f"original_out shape: {original_out.shape}\nout shape: {out.shape}")
+        # assert torch.allclose(out, original_out, rtol=1e-3, atol=1e4), "Output from forward does not match original_forward"
+        # print(main_features.numel(), residual_features.numel())
+
+        # output is of shape: main_features shape: torch.Size([16, 257, 1024]), residual_features shape: torch.Size([16, 257, 1024])
+        # this maps to [batch, sequence_length, feature_dim]
+        # sequence length is 257 because of the 256 14x14 patches + 1 cls token in ViT-L/14 with 224*224 input
+
+        return out
     
     def compute_orthogonal_loss(self):
         # According to the properties of orthogonal matrices: A^TA = I
@@ -202,12 +227,19 @@ class SVDResidualLinear(nn.Module):
         return loss
     
     def compute_hsic_loss(self):
-        if self.S_residual is None:
+        if self.cached_main_features is None or self.cached_residual_features is None:
             return torch.tensor(0.0, device=self.weight_main.device)
-        residual_weight = self.U_residual @ torch.diag(self.S_residual) @ self.V_residual
-        main_weight = self.weight_main
-        # Compute HSIC between main_weight and residual_weight
-        return self.hsic_loss_func(main_weight, residual_weight)
+        
+        loss = 0
+        # Shape of features is [batch, sequence_length, feature_dim]
+        # Iterate over the batch dimension and compute HSIC for each instance, then average
+        for i in range(self.cached_main_features.size(dim=0)):
+            main_feat_instance = self.cached_main_features[i]  # Shape: [sequence_length, feature_dim]
+            residual_feat_instance = self.cached_residual_features[i]  # Shape: [sequence_length, feature_dim]
+            loss += self.hsic_loss_func(main_feat_instance.detach(), residual_feat_instance.detach())
+        loss = loss / self.cached_main_features.size(dim=0)
+        
+        return loss
         
 
 # Function to replace nn.Linear modules within self_attn modules with SVDResidualLinear
