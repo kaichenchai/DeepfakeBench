@@ -69,28 +69,86 @@ class Effort_HSIC_CE_Detector(nn.Module):
     def classifier(self, features: torch.tensor) -> torch.tensor:
         return self.head(features)
 
+    def get_orthogonal_loss(self, data_dict: dict, pred_dict: dict) -> dict:
+        label = data_dict['label']
+        pred = pred_dict['cls']
+        loss = self.loss_func(pred, label)
+        
+        # Regularization term
+        lambda_reg = 0.1
+        orthogonal_losses = []
+        for module in self.backbone.modules():
+            if isinstance(module, SVDResidualLinear):
+                # Apply orthogonal constraints to the U_residual and V_residual matrix
+                orthogonal_losses.append(module.compute_orthogonal_loss())
+        
+        if orthogonal_losses:
+            reg_term = sum(orthogonal_losses)
+            loss += lambda_reg * reg_term
+        
+        return loss
+
+    def get_weight_loss(self):
+        weight_sum_dict = {}
+        num_weight_dict = {}
+        for name, module in self.backbone.named_modules():
+            if isinstance(module, SVDResidualLinear):
+                weight_curr = module.compute_current_weight()
+                if str(weight_curr.size()) not in weight_sum_dict.keys():
+                    weight_sum_dict[str(weight_curr.size())] = weight_curr
+                    num_weight_dict[str(weight_curr.size())] = 1
+                else:
+                    weight_sum_dict[str(weight_curr.size())] += weight_curr
+                    num_weight_dict[str(weight_curr.size())] += 1
+        
+        loss = 0.0
+        for k in weight_sum_dict.keys():
+            _, S_sum, _ = torch.linalg.svd(weight_sum_dict[k], full_matrices=False)
+            loss += -torch.mean(S_sum)
+        loss /= len(weight_sum_dict.keys())
+        return loss
+    
+    def get_hsic_loss(self) -> dict:
+        hsic_losses = []
+        for module in self.backbone.modules():
+            if isinstance(module, SVDResidualLinear):
+                hsic_losses.append(module.compute_hsic_loss())
+        
+        if hsic_losses:
+            loss = sum(hsic_losses) / len(hsic_losses)
+        else:
+            loss = torch.tensor(0.0, device=next(self.parameters()).device)
+        return loss
+    
     def get_losses(self, data_dict: dict, pred_dict: dict) -> dict:
         label = data_dict['label']
         pred = pred_dict['cls']
 
-        lambda_hsic = 1.0
-
         cross_entropy_loss = self.loss_func(pred, label)
-        hsic_loss = torch.tensor(0.0, device=pred.device)
-        hsic_losses = []
-        # Only compute HSIC during training (when gradients are needed)
-        # Otherwise during testing run into OOM due to HSIC
-        # Saves us from having to store all of these large matricies during testing
+        
+        overall_loss = cross_entropy_loss
+        
+        # Only compute all of these other losses when training as they are not needed
         if self.training:
-            for module in self.backbone.modules():
-                if isinstance(module, SVDResidualLinear):
-                    hsic_losses.append(module.compute_hsic_loss())
+            if 'orthogonal' in self.config['loss_functions']['selected']:
+                lambda_orthogonal = self.config['loss_functions']['orthogonal']['lambda']
+                orthogonal_loss = self.get_orthogonal_loss(data_dict, pred_dict)
+                scaled_orthogonal_loss = lambda_orthogonal * orthogonal_loss
+                overall_loss += scaled_orthogonal_loss
+                
+            if 'weight' in self.config['loss_functions']['selected']:
+                lambda_weight = self.config['loss_functions']['weight']['lambda']
+                weight_loss = self.get_weight_loss()
+                scaled_weight_loss = lambda_weight * weight_loss
+                overall_loss += scaled_weight_loss
+            
+            if 'hsic' in self.config['loss_functions']['selected']:
+                lambda_hsic = self.config['loss_functions']['hsic']['lambda']
+                hsic_loss = self.get_hsic_loss()
+                scaled_hsic_loss = lambda_hsic * hsic_loss
+                overall_loss += scaled_hsic_loss
 
-            if hsic_losses:
-                hsic_loss = sum(hsic_losses) / len(hsic_losses)
-
-        loss = cross_entropy_loss + lambda_hsic * hsic_loss
-
+        # masking for real and fake classification loss
         mask_real = label == 0
         mask_fake = label == 1
 
@@ -105,12 +163,17 @@ class Effort_HSIC_CE_Detector(nn.Module):
             loss_fake = torch.tensor(0.0, device=pred.device)
 
         loss_dict = {
-            'overall': loss,
+            'overall': overall_loss,
             'real_loss': loss_real.detach(),
             'fake_loss': loss_fake.detach(),
-            'hsic_loss': hsic_loss.detach() if hsic_losses else torch.tensor(0.0, device=pred.device),
-            'cross_entropy_loss': cross_entropy_loss.detach()
+            'cross_entropy_loss': cross_entropy_loss.detach(),
+            'hsic_loss': scaled_hsic_loss.detach() if 'hsic' in self.config['loss_functions']['selected'] else torch.tensor(0.0, device=pred.device).detach(),
+            'weight_loss': scaled_weight_loss.detach() if 'weight' in self.config['loss_functions']['selected'] else torch.tensor(0.0, device=pred.device).detach(),
+            'orthogonal_loss': scaled_orthogonal_loss.detach() if 'orthogonal' in self.config['loss_functions']['selected'] else torch.tensor(0.0, device=pred.device).detach(),
         }
+        
+        print(loss_dict)
+        
         return loss_dict
 
     def get_train_metrics(self, data_dict: dict, pred_dict: dict) -> dict:
