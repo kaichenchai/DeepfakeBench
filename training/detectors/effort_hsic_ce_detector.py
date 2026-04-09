@@ -296,7 +296,7 @@ class SVDResidualLinear(nn.Module):
         for i in range(self.cached_main_features.size(dim=0)):
             main_feat_instance = self.cached_main_features[i]  # Shape: [sequence_length, feature_dim]
             residual_feat_instance = self.cached_residual_features[i]  # Shape: [sequence_length, feature_dim]
-            loss += self.hsic_loss_func(main_feat_instance.detach(), residual_feat_instance.detach())
+            loss += self.hsic_loss_func(main_feat_instance.detach(), residual_feat_instance)
         loss = loss / self.cached_main_features.size(dim=0)
         
         return loss
