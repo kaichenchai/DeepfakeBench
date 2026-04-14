@@ -126,6 +126,11 @@ class Effort_HSIC_CE_Detector(nn.Module):
         overall_loss = 0
         overall_loss += cross_entropy_loss
         
+        # default cases if not in training
+        scaled_orthogonal_loss = torch.tensor(0.0, device=pred.device).detach()
+        scaled_weight_loss = torch.tensor(0.0, device=pred.device).detach()
+        scaled_hsic_loss = torch.tensor(0.0, device=pred.device).detach()
+        
         # Only compute all of these other losses when training as they are not needed
         if self.training:
             if 'orthogonal' in self.config['loss_functions']['selected']:

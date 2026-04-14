@@ -1,6 +1,10 @@
 # log dir 
 log_dir: ./logs
 
+# wandb setting
+wandb:
+  name: effort_ce_orthogonal
+
 # model setting
 pretrained: 'no need to provide this for the effort model'
 model_name: effort_hsic_ce   # model name

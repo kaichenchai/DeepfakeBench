@@ -85,9 +85,11 @@ class Trainer(object):
         # Initialize wandb if enabled and only on rank 0
         if self.config.get('wandb', {}).get('enabled', True) and self.config.get('local_rank', 0) == 0:
             self.wandb_enabled = True
+            if self.config.get("wandb", {}).get("name", None) is None:
+                self.config['wandb']['name'] = f"{self.config['model_name']}_{self.timenow}"
             wandb.init(
                 project=self.config.get('wandb', {}).get('project', 'deepfakebench'),
-                name=f"{self.config['model_name']}_{self.timenow}",
+                name=self.config['wandb']['name'],
                 config=self.config,
                 dir=self.config.get('wandb', {}).get('save_dir', './logs/wandb/'),
                 mode=self.config.get('wandb', {}).get('mode', 'online'),
