@@ -14,11 +14,22 @@ class HSICLoss(AbstractLossClass):
         instances_norm = torch.sum(x**2,-1).reshape((-1,1))
         return -2*torch.mm(x,x.t()) + instances_norm + instances_norm.t()
 
-    def GaussianKernelMatrix(self, x, sigma=1):
-        pairwise_distances_ = self.pairwise_distances(x)
-        return torch.exp(-pairwise_distances_ /sigma)
+    def median_bandwidth(self, dists):
+        # Median heuristic: sigma = median of upper-triangle pairwise distances.
+        # Mask excludes the diagonal and lower triangle
+        mask = torch.triu(torch.ones_like(dists, dtype=torch.bool), diagonal=1)
+        upper = dists[mask]
+        sigma = upper.median()
+        # Guard against degenerate cases (all identical inputs)
+        return sigma.clamp(min=1e-3)
 
-    def HSIC(self, x, y, s_x=1, s_y=1):
+    def GaussianKernelMatrix(self, x, sigma=None):
+        pairwise_distances_ = self.pairwise_distances(x)
+        if sigma is None:
+            sigma = self.median_bandwidth(pairwise_distances_)
+        return torch.exp(-pairwise_distances_ / sigma)
+
+    def HSIC(self, x, y, s_x=None, s_y=None):
         m,_ = x.shape #batch size
         if m <= 1:
             return torch.tensor(0.0, device=x.device, requires_grad=True)
