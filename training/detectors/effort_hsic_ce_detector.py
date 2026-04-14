@@ -71,6 +71,8 @@ class Effort_HSIC_CE_Detector(nn.Module):
 
     def get_orthogonal_loss(self) -> dict:
         # Regularization term
+        loss = 0.0
+        lambda_reg = 0.1
         orthogonal_losses = []
         for module in self.backbone.modules():
             if isinstance(module, SVDResidualLinear):
@@ -78,7 +80,8 @@ class Effort_HSIC_CE_Detector(nn.Module):
                 orthogonal_losses.append(module.compute_orthogonal_loss())
         
         if orthogonal_losses:
-            loss = sum(orthogonal_losses) / len(orthogonal_losses)
+            reg_term = sum(orthogonal_losses)
+            loss += lambda_reg * reg_term
         
         return loss
 
