@@ -16,9 +16,10 @@ class HSICLoss(AbstractLossClass):
 
     def median_bandwidth(self, dists):
         # Median heuristic: sigma = median of upper-triangle pairwise distances.
-        # Mask excludes the diagonal and lower triangle
-        mask = torch.triu(torch.ones_like(dists, dtype=torch.bool), diagonal=1)
-        upper = dists[mask]
+        # triu_indices avoids materialising the full m×m boolean mask
+        m = dists.shape[0]
+        idx = torch.triu_indices(m, m, offset=1, device=dists.device)
+        upper = dists[idx[0], idx[1]]
         sigma = upper.median()
         # Guard against degenerate cases (all identical inputs)
         return sigma.clamp(min=1e-3)
