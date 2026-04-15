@@ -174,9 +174,7 @@ class Effort_HSIC_CE_Detector(nn.Module):
             'weight_loss': scaled_weight_loss.detach() if 'weight' in self.config['loss_functions']['selected'] else torch.tensor(0.0, device=pred.device).detach(),
             'orthogonal_loss': scaled_orthogonal_loss.detach() if 'orthogonal' in self.config['loss_functions']['selected'] else torch.tensor(0.0, device=pred.device).detach(),
         }
-        
-        print(loss_dict)
-        
+                
         return loss_dict
 
     def get_train_metrics(self, data_dict: dict, pred_dict: dict) -> dict:
@@ -262,7 +260,9 @@ class SVDResidualLinear(nn.Module):
         if self.bias is not None:
             out += self.bias
             
-        self.cached_main_features = main_features
+        # Detach main features on cache: weight_main is frozen (requires_grad=False)
+        # Therefore don't need to cache later when calculating HSIC loss
+        self.cached_main_features = main_features.detach()
         self.cached_residual_features = residual_features
                 
         # this is for checking the shapes of the features and that output from forward matches original_forward
@@ -295,18 +295,21 @@ class SVDResidualLinear(nn.Module):
     def compute_hsic_loss(self):
         if self.cached_main_features is None or self.cached_residual_features is None:
             return torch.tensor(0.0, device=self.weight_main.device)
-        
+
         assert self.cached_main_features.shape == self.cached_residual_features.shape, f"Main and residual features must have the same shape for HSIC loss computation: {self.cached_main_features.shape} vs {self.cached_residual_features.shape}"
 
-        loss = 0
-        # Shape of features is [batch, sequence_length, feature_dim]
-        # Iterate over the batch dimension and compute HSIC for each instance, then average
-        for i in range(self.cached_main_features.size(dim=0)):
-            main_feat_instance = self.cached_main_features[i]  # Shape: [sequence_length, feature_dim]
-            residual_feat_instance = self.cached_residual_features[i]  # Shape: [sequence_length, feature_dim]
-            loss += self.hsic_loss_func(main_feat_instance.detach(), residual_feat_instance)
-        loss = loss / self.cached_main_features.size(dim=0)
-        
+        # Shape of cached features is [batch, sequence_length, feature_dim].
+        # Use the CLS token (index 0) and treat the batch as the samples dimension.
+        # This gives m = batch_size (e.g. 8) instead of m = 257 (sequence length),
+        main_feat = self.cached_main_features[:, 0, :]    # [batch, feature_dim], already detached when cached in forward
+        residual_feat = self.cached_residual_features[:, 0, :]     # [batch, feature_dim]
+
+        # Free the full cached tensors now that we have the slices we need.
+        self.cached_main_features = None
+        self.cached_residual_features = None
+
+        loss = self.hsic_loss_func(main_feat, residual_feat)
+
         return loss
         
 
