@@ -2,6 +2,7 @@
 # email: zhiyuanyan@link.cuhk.edu.cn
 # date: 2023-03-30
 # description: trainer
+from logging import config
 import os
 import sys
 current_file_path = os.path.abspath(__file__)
@@ -69,17 +70,22 @@ class Trainer(object):
         # get current time
         self.timenow = time_now
         # create directory path
-        if 'task_target' not in config:
+        task_str = f"_{config['task_target']}" if config.get('task_target', None) is not None else ""
+    
+        full_run_name = ""
+        if config.get('run_name', None) is not None:
+            full_run_name = config['run_name'] + '_' + config['model_name'] + task_str + '_' + self.timenow
             self.log_dir = os.path.join(
-                self.config['log_dir'],
-                self.config['model_name'] + '_' + self.timenow
+                config['log_dir'],
+                full_run_name
             )
         else:
-            task_str = f"_{config['task_target']}" if config['task_target'] is not None else ""
-            self.log_dir = os.path.join(
-                self.config['log_dir'],
-                self.config['model_name'] + task_str + '_' + self.timenow
-            )
+            full_run_name = config['model_name'] + task_str + '_' + self.timenow
+            self.log_dir =  os.path.join(
+                        config['log_dir'],
+                        full_run_name
+                    )
+        
         os.makedirs(self.log_dir, exist_ok=True)
 
         # Initialize wandb if enabled and only on rank 0
@@ -87,7 +93,7 @@ class Trainer(object):
             self.wandb_enabled = True
             wandb.init(
                 project=self.config.get('wandb', {}).get('project', 'deepfakebench'),
-                name=f"{self.config['model_name']}_{self.timenow}",
+                name=full_run_name,
                 config=self.config,
                 dir=self.config.get('wandb', {}).get('save_dir', './logs/wandb/'),
                 mode=self.config.get('wandb', {}).get('mode', 'online'),

@@ -14,11 +14,23 @@ class HSICLoss(AbstractLossClass):
         instances_norm = torch.sum(x**2,-1).reshape((-1,1))
         return -2*torch.mm(x,x.t()) + instances_norm + instances_norm.t()
 
-    def GaussianKernelMatrix(self, x, sigma=1):
-        pairwise_distances_ = self.pairwise_distances(x)
-        return torch.exp(-pairwise_distances_ /sigma)
+    def median_bandwidth(self, dists):
+        # Median heuristic: sigma = median of upper-triangle pairwise distances.
+        # triu_indices avoids materialising the full m×m boolean mask
+        m = dists.shape[0]
+        idx = torch.triu_indices(m, m, offset=1, device=dists.device)
+        upper = dists[idx[0], idx[1]]
+        sigma = upper.median()
+        # Guard against degenerate cases (all identical inputs)
+        return sigma.clamp(min=1e-3)
 
-    def HSIC(self, x, y, s_x=1, s_y=1):
+    def GaussianKernelMatrix(self, x, sigma=None):
+        pairwise_distances_ = self.pairwise_distances(x)
+        if sigma is None:
+            sigma = self.median_bandwidth(pairwise_distances_)
+        return torch.exp(-pairwise_distances_ / sigma)
+
+    def HSIC(self, x, y, s_x=None, s_y=None):
         m,_ = x.shape #batch size
         if m <= 1:
             return torch.tensor(0.0, device=x.device, requires_grad=True)
@@ -31,21 +43,21 @@ class HSICLoss(AbstractLossClass):
         HSIC = torch.trace(torch.mm(L,torch.mm(H,torch.mm(K,H))))/((m-1)**2)
         return HSIC
         
-    def forward(self, pred, label):
-        # Ensure pred and label are 2D - for HSIC calculation with torch.mm
-        if pred.dim() == 1:
-            pred = pred.unsqueeze(1)
-        if label.dim() == 1:
-            # Convert to float since we are computing Euclidean distances
-            label = label.float().unsqueeze(1) 
-            
-        hsic_loss = self.HSIC(pred, label)
+    def forward(self, frozen_features, residual_features):
+        # Ensure frozen_features and residual_features are 2D - for HSIC calculation with torch.mm
+        if frozen_features.dim() == 1:
+            frozen_features = frozen_features.unsqueeze(1)
+        if residual_features.dim() == 1:
+            residual_features = residual_features.unsqueeze(1)
+
+        hsic_loss = self.HSIC(frozen_features, residual_features)
         return hsic_loss
     
     
 if __name__ == "__main__":
-    pred = torch.randn(10, 512)
-    label = torch.randn(10, 512)
+    # Example usage
     hsic_loss_func = HSICLoss()
-    loss = hsic_loss_func(pred, label)
-    print(loss)
+    x = torch.randn(257, 1024)  # 257 samples, 1024 features each
+    y = torch.randn(257, 1024)  # 257 samples, 1024 features each
+    loss = hsic_loss_func(x, y)
+    print(f"HSIC Loss: {loss.item()}")

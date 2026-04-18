@@ -45,3 +45,4 @@ from .sia_detector import SIADetector
 from .tall_detector import TALLDetector
 from .effort_detector import EffortDetector
 from .effort_causal_detector import EffortCausalDetector
+from .effort_custom_detector import Effort_Custom_Detector

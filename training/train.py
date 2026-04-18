@@ -257,10 +257,17 @@ def main():
     # create logger
     timenow=datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
     task_str = f"_{config['task_target']}" if config.get('task_target', None) is not None else ""
-    logger_path =  os.path.join(
-                config['log_dir'],
-                config['model_name'] + task_str + '_' + timenow
-            )
+    
+    if config.get('run_name', None) is not None:
+        logger_path = os.path.join(
+            config['log_dir'],
+            config['run_name'] + '_' + config['model_name'] + task_str + '_' + timenow
+        )
+    else:
+        logger_path =  os.path.join(
+                    config['log_dir'],
+                    config['model_name'] + task_str + '_' + timenow
+                )
     os.makedirs(logger_path, exist_ok=True)
     logger = create_logger(os.path.join(logger_path, 'training.log'))
     logger.info('Save log to {}'.format(logger_path))
