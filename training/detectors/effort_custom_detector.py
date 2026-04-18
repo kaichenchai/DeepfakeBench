@@ -28,10 +28,10 @@ from transformers import AutoProcessor, CLIPModel, ViTModel, ViTConfig
 logger = logging.getLogger(__name__)
 
 
-@DETECTOR.register_module(module_name='effort_hsic_ce')
-class Effort_HSIC_CE_Detector(nn.Module):
+@DETECTOR.register_module(module_name='effort_custom')
+class Effort_Custom_Detector(nn.Module):
     def __init__(self, config=None):
-        super(Effort_HSIC_CE_Detector, self).__init__()
+        super(Effort_Custom_Detector, self).__init__()
         self.config = config
         self.backbone = self.build_backbone(config)
         self.head = nn.Linear(1024, 2)
