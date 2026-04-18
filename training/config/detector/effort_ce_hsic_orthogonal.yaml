@@ -5,7 +5,7 @@ run_name: effort_ce_hsic_orthogonal
 
 # model setting
 pretrained: 'no need to provide this for the effort model'
-model_name: effort_hsic_ce   # model name
+model_name: effort_custom   # model name
 backbone_name: vit  # backbone name
 
 #backbone setting
