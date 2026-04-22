@@ -33,7 +33,13 @@ from sklearn import metrics
 from metrics.utils import get_test_metrics
 
 FFpp_pool=['FaceForensics++','FF-DF','FF-F2F','FF-FS','FF-NT']#
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# Check if on macbook with MPS support, else check for CUDA, else use CPU
+if torch.backends.mps.is_available():
+    device = torch.device("mps")
+elif torch.cuda.is_available():
+    device = torch.device("cuda")
+else:
+    device = torch.device("cpu")
 
 
 class Trainer(object):
@@ -248,7 +254,7 @@ class Trainer(object):
             # more elegant and more scalable way of moving data to GPU
             for key in data_dict.keys():
                 if data_dict[key]!=None and key!='name':
-                    data_dict[key]=data_dict[key].cuda()
+                    data_dict[key]=data_dict[key].to(device)
 
             losses,predictions=self.train_step(data_dict)
 
@@ -360,7 +366,7 @@ class Trainer(object):
             # move data to GPU elegantly
             for key in data_dict.keys():
                 if data_dict[key]!=None:
-                    data_dict[key]=data_dict[key].cuda()
+                    data_dict[key]=data_dict[key].to(device)
             # model forward without considering gradient computation
             predictions = self.inference(data_dict)
             label_lists += list(data_dict['label'].cpu().detach().numpy())
