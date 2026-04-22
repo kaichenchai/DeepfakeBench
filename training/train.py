@@ -49,6 +49,7 @@ parser.add_argument('--no-save_feat', dest='save_feat', action='store_false', de
 parser.add_argument("--ddp", action='store_true', default=False)
 parser.add_argument('--local_rank', type=int, default=-1)
 parser.add_argument('--task_target', type=str, default="", help='specify the target of current training task')
+parser.add_argument('--no-wandb', action='store_true', default=False, help='Disable wandb logging for test runs')
 args = parser.parse_args()
 
 # Handle local_rank from environment (torchrun) or argument (legacy)
@@ -58,7 +59,8 @@ if args.local_rank == -1:
     else:
         args.local_rank = 0
 
-torch.cuda.set_device(args.local_rank)
+if torch.cuda.is_available():
+    torch.cuda.set_device(args.local_rank)
 
 
 def init_seed(config):
@@ -251,6 +253,9 @@ def main():
         config['test_dataset'] = args.test_dataset
     config['save_ckpt'] = args.save_ckpt
     config['save_feat'] = args.save_feat
+    
+    if args.no_wandb:
+        config['wandb']['enabled'] = False
 
     # Auto-detect platform: disable CUDA on macOS, enable on other platforms
     if sys.platform == 'darwin':
