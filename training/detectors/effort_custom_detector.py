@@ -218,9 +218,7 @@ class Effort_Custom_Detector(nn.Module):
             'cross_entropy_loss': cross_entropy_loss.detach(),
             **dynamic_losses,
         }
-        
-        print(loss_dict)
-        
+                
         return loss_dict
 
     def get_train_metrics(self, data_dict: dict, pred_dict: dict) -> dict:

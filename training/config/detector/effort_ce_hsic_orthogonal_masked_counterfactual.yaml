@@ -1,7 +1,7 @@
 # log dir 
 log_dir: ./logs
 
-run_name: effort_ce_masked_counterfactual
+run_name: effort_ce_hsic_orthogonal_masked_counterfactual
 
 # model setting
 pretrained: 'no need to provide this for the effort model'
@@ -82,7 +82,7 @@ losstype: null
 # for supplementary loss functions implemented in the model
 loss_functions:
   requires_counterfactual_backbone: true
-  selected: [masked_counterfactual]
+  selected: [hsic, orthogonal, masked_counterfactual]
   orthogonal:
     lambda: 1.0 
   weight:
