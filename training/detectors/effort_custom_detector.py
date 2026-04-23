@@ -35,7 +35,7 @@ class Effort_Custom_Detector(nn.Module):
         self.config = config
         self.backbone = self.build_backbone(config)
         if self.config['loss_functions'].get("requires_counterfactual_backbone", False):
-            self.counterfactual_model = self.build_counterfactual_model(self.backbone)
+            self.counterfactual_backbone = self.build_counterfactual_backbone(self.backbone)
         self.head = nn.Linear(1024, 2)
         self.loss_func = nn.CrossEntropyLoss()
         self.prob, self.label = [], []
@@ -65,7 +65,7 @@ class Effort_Custom_Detector(nn.Module):
 
         return clip_model.vision_model
     
-    def build_counterfactual_model(self, backbone):
+    def build_counterfactual_backbone(self, backbone):
         # Zero out residual components to get counterfactual backbone
         cf_model = copy.deepcopy(backbone)
         for module in cf_model.modules():
@@ -135,7 +135,7 @@ class Effort_Custom_Detector(nn.Module):
     def get_counterfactual_loss(self, data_dict: dict, pred_dict: dict) -> dict:
         with torch.no_grad():
             # In the same way as self.backbone, but use frozen model instead
-            cf_features = self.counterfactual_model(data_dict["image"])["pooler_output"]
+            cf_features = self.counterfactual_backbone(data_dict["image"])["pooler_output"]
         cf_pred = self.head(cf_features)  # Share same head
         # Compare the counterfactual prediction with the original prediction
         counterfactual_loss = self.mse_loss_func(cf_pred, pred_dict['cls'])
@@ -144,19 +144,44 @@ class Effort_Custom_Detector(nn.Module):
     
     def get_masked_counterfactual_loss(self, data_dict: dict, pred_dict: dict) -> dict:
         # Masked counterfactual loss, we only want to penalise model for deviating from base model on real faces, not fake
+        # For fake images we want to increase the difference between the two predictions
         # Otherwise encourages residual model weights to be zero, penalises model for learning
         with torch.no_grad():
-            cf_features = self.counterfactual_model(data_dict["image"])["pooler_output"]
+            cf_features = self.counterfactual_backbone(data_dict["image"])["pooler_output"]
         cf_pred = self.head(cf_features)  
 
         # Only penalize the model for deviating from the base model on REAL faces
         mask_real = (data_dict['label'] == 0)
+        mask_fake = (data_dict['label'] == 1)
         
         if mask_real.sum() > 0:
             # Pull predictions together ONLY for real images
             counterfactual_loss = self.mse_loss_func(cf_pred[mask_real], pred_dict['cls'][mask_real])
+        elif mask_fake.sum() > 0:
+            # we want to maximise the difference between the two differences for fake images, to encourage learning of residual weights that deviate from the base model for fake images
+            counterfactual_loss = -1 * self.mse_loss_func(cf_pred[mask_fake], pred_dict['cls'][mask_fake])
         else:
             counterfactual_loss = torch.tensor(0.0, device=pred_dict['cls'].device)
+            
+        return counterfactual_loss
+    
+    def get_masked_counterfactual_backbone_loss(self, data_dict: dict, pred_dict: dict) -> dict:
+        # Similar to get_masked_counterfactual_loss but applies MSE loss before the head, directly on 1024 output features
+        with torch.no_grad():
+            cf_features = self.counterfactual_backbone(data_dict["image"])["pooler_output"]
+
+        # Only penalize the model for deviating from the base model on REAL faces
+        mask_real = (data_dict['label'] == 0)
+        mask_fake = (data_dict['label'] == 1)
+        
+        if mask_real.sum() > 0:
+            counterfactual_loss = self.mse_loss_func(cf_features[mask_real], pred_dict['feat'][mask_real])
+        elif mask_fake.sum() > 0:
+            # we want to maximise the difference between the two differences for fake images
+            # Encourage learning of residual weights that deviate from the base model for fake images
+            counterfactual_loss = -1 * self.mse_loss_func(cf_features[mask_fake], pred_dict['feat'][mask_fake])
+        else:
+            counterfactual_loss = torch.tensor(0.0, device=pred_dict['feat'].device)
             
         return counterfactual_loss
     
@@ -175,6 +200,7 @@ class Effort_Custom_Detector(nn.Module):
             'orthogonal_loss': torch.tensor(0.0, device=pred.device).detach(),
             'counterfactual_loss': torch.tensor(0.0, device=pred.device).detach(),
             'masked_counterfactual_loss': torch.tensor(0.0, device=pred.device).detach(),
+            'masked_counterfactual_backbone_loss': torch.tensor(0.0, device=pred.device).detach(),
         }
         
         # Only compute all of these other losses when training
