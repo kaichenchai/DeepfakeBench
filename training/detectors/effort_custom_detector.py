@@ -230,9 +230,7 @@ class Effort_Custom_Detector(AbstractDetector):
             **dynamic_losses,
 >>>>>>> bfeba19 (feat(counterfactual-loss): created counterfactual loss and masked counterfactual loss functions)
         }
-        
-        print(loss_dict)
-        
+                
         return loss_dict
 
     def get_train_metrics(self, data_dict: dict, pred_dict: dict) -> dict:
