@@ -154,14 +154,15 @@ class Effort_Custom_Detector(nn.Module):
         mask_real = (data_dict['label'] == 0)
         mask_fake = (data_dict['label'] == 1)
         
+        counterfactual_loss = torch.tensor(0.0, device=pred_dict['cls'].device)
+        
         if mask_real.sum() > 0:
             # Pull predictions together ONLY for real images
-            counterfactual_loss = self.mse_loss_func(cf_pred[mask_real], pred_dict['cls'][mask_real])
-        elif mask_fake.sum() > 0:
+            counterfactual_loss = counterfactual_loss + self.mse_loss_func(cf_pred[mask_real], pred_dict['cls'][mask_real])
+            
+        if mask_fake.sum() > 0:
             # we want to maximise the difference between the two differences for fake images, to encourage learning of residual weights that deviate from the base model for fake images
-            counterfactual_loss = -1 * self.mse_loss_func(cf_pred[mask_fake], pred_dict['cls'][mask_fake])
-        else:
-            counterfactual_loss = torch.tensor(0.0, device=pred_dict['cls'].device)
+            counterfactual_loss = counterfactual_loss - self.mse_loss_func(cf_pred[mask_fake], pred_dict['cls'][mask_fake])
             
         return counterfactual_loss
     
@@ -174,14 +175,15 @@ class Effort_Custom_Detector(nn.Module):
         mask_real = (data_dict['label'] == 0)
         mask_fake = (data_dict['label'] == 1)
         
+        counterfactual_loss = torch.tensor(0.0, device=pred_dict['feat'].device)
+        
         if mask_real.sum() > 0:
-            counterfactual_loss = self.mse_loss_func(cf_features[mask_real], pred_dict['feat'][mask_real])
-        elif mask_fake.sum() > 0:
+            counterfactual_loss = counterfactual_loss + self.mse_loss_func(cf_features[mask_real], pred_dict['feat'][mask_real])
+            
+        if mask_fake.sum() > 0:
             # we want to maximise the difference between the two differences for fake images
             # Encourage learning of residual weights that deviate from the base model for fake images
-            counterfactual_loss = -1 * self.mse_loss_func(cf_features[mask_fake], pred_dict['feat'][mask_fake])
-        else:
-            counterfactual_loss = torch.tensor(0.0, device=pred_dict['feat'].device)
+            counterfactual_loss = counterfactual_loss - self.mse_loss_func(cf_features[mask_fake], pred_dict['feat'][mask_fake])
             
         return counterfactual_loss
     
