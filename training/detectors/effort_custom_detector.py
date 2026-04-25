@@ -150,7 +150,6 @@ class Effort_Custom_Detector(nn.Module):
             cf_features = self.counterfactual_backbone(data_dict["image"])["pooler_output"]
         cf_pred = self.head(cf_features)  
 
-        # Only penalize the model for deviating from the base model on REAL faces
         mask_real = (data_dict['label'] == 0)
         mask_fake = (data_dict['label'] == 1)
         
@@ -161,11 +160,11 @@ class Effort_Custom_Detector(nn.Module):
             counterfactual_loss = counterfactual_loss + self.mse_loss_func(cf_pred[mask_real], pred_dict['cls'][mask_real])
             
         if mask_fake.sum() > 0:
-            # We want to maximise the difference between the two predictions for fake images up to a margin
-            # Encourage learning of residual weights that deviate from the base model for fake images without causing unbounded negative loss
-            margin = 1.0
+            # Reward the model with negative loss for deviating on fake images, 
+            # but limit the maximum reward to -margin to prevent exploding logits.
+            margin = 10.0
             mse_fake = self.mse_loss_func(cf_pred[mask_fake], pred_dict['cls'][mask_fake])
-            counterfactual_loss = counterfactual_loss + torch.clamp(margin - mse_fake, min=0.0)
+            counterfactual_loss = counterfactual_loss + torch.clamp(-mse_fake, min=-margin)
             
         return counterfactual_loss
     
@@ -174,7 +173,6 @@ class Effort_Custom_Detector(nn.Module):
         with torch.no_grad():
             cf_features = self.counterfactual_backbone(data_dict["image"])["pooler_output"]
 
-        # Only penalize the model for deviating from the base model on REAL faces
         mask_real = (data_dict['label'] == 0)
         mask_fake = (data_dict['label'] == 1)
         
@@ -184,11 +182,11 @@ class Effort_Custom_Detector(nn.Module):
             counterfactual_loss = counterfactual_loss + self.mse_loss_func(cf_features[mask_real], pred_dict['feat'][mask_real])
             
         if mask_fake.sum() > 0:
-            # We want to maximise the difference between the two features for fake images up to a margin
-            # Encourage learning of residual weights that deviate from the base model for fake images without causing unbounded negative loss
-            margin = 1.0
+            # Reward the model with negative loss for deviating on fake images, 
+            # but limit the maximum reward to -margin to prevent exploding features.
+            margin = 4.0
             mse_fake = self.mse_loss_func(cf_features[mask_fake], pred_dict['feat'][mask_fake])
-            counterfactual_loss = counterfactual_loss + torch.clamp(margin - mse_fake, min=0.0)
+            counterfactual_loss = counterfactual_loss + torch.clamp(-mse_fake, min=-margin)
             
         return counterfactual_loss
     
