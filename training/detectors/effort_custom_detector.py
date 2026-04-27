@@ -179,14 +179,15 @@ class Effort_Custom_Detector(nn.Module):
         counterfactual_loss = torch.tensor(0.0, device=pred_dict['feat'].device)
         
         if mask_real.sum() > 0:
+            # Force features to be identical for real images, idea is that residual components don't deviate from frozen backbone on real images
             counterfactual_loss = counterfactual_loss + self.mse_loss_func(cf_features[mask_real], pred_dict['feat'][mask_real])
             
         if mask_fake.sum() > 0:
-            # Reward the model with negative loss for deviating on fake images, 
-            # but limit the maximum reward to -margin to prevent exploding features.
-            margin = 4.0
-            mse_fake = self.mse_loss_func(cf_features[mask_fake], pred_dict['feat'][mask_fake])
-            counterfactual_loss = counterfactual_loss + torch.clamp(-mse_fake, min=-margin)
+            # For fake images: calculate cosine similarity along the feature dimension
+            cos_sim = F.cosine_similarity(cf_features[mask_fake], pred_dict['feat'][mask_fake], dim=-1)
+            
+            # Enforce orthogonality: penalize positive similarity by increasing loss, ignore zero or negative similarity
+            counterfactual_loss = counterfactual_loss + F.relu(cos_sim).mean()
             
         return counterfactual_loss
     
