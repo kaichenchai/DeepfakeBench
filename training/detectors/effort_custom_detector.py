@@ -179,8 +179,16 @@ class Effort_Custom_Detector(nn.Module):
         counterfactual_loss = torch.tensor(0.0, device=pred_dict['feat'].device)
         
         if mask_real.sum() > 0:
-            cos_sim_real = F.cosine_similarity(cf_features[mask_real], pred_dict['feat'][mask_real], dim=-1)
-            counterfactual_loss = counterfactual_loss + (1 - cos_sim_real).mean()
+            # Force features to be identical for real images, preserving both direction and magnitude
+            cf_real = cf_features[mask_real]
+            pred_real = pred_dict['feat'][mask_real]
+            mse = self.mse_loss_func(cf_real, pred_real)
+            
+            # Normalize MSE by the squared L2 norm of the output from the counterfactual backbone
+            # This helps to try and align the scale with cosine similarity
+            # The epsilon prevents division by zero, is a pretty standard value also used by adam etc.
+            scale = (cf_real.norm(p=2, dim=-1)**2).mean().detach() + 1e-8
+            counterfactual_loss = counterfactual_loss + (mse / scale)
             
         if mask_fake.sum() > 0:
             # For fake images: calculate cosine similarity along the feature dimension
