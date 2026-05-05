@@ -1,7 +1,7 @@
 # log dir 
 log_dir: ./logs
 
-run_name: effort_ce_masked_counterfactual_backbone
+run_name: effort_ce_hsic_orthogonal_masked_counterfactual_backbone
 
 # model setting
 pretrained: 'no need to provide this for the effort model'
