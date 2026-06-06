@@ -7,7 +7,6 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "albumentations==1.1.0",
     "clip",
-    "dlib>=20.0.0",
     "efficientnet-pytorch>=0.7.1",
     "einops>=0.8.2",
     "filterpy>=1.4.5",

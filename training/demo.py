@@ -5,7 +5,10 @@ import yaml
 import pickle
 from tqdm import tqdm
 from PIL import Image as pil_image
-import dlib
+try:
+    import dlib
+except ImportError:
+    dlib = None
 import torch
 import torch.nn as nn
 import torch.nn.parallel

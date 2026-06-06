@@ -58,7 +58,10 @@ import os
 import sys
 import time
 import cv2
-import dlib
+try:
+    import dlib
+except ImportError:
+    dlib = None
 import yaml
 import logging
 import datetime
