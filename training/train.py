@@ -291,6 +291,7 @@ def main():
             backend='nccl',
             timeout=timedelta(minutes=30)
         )
+        dist.barrier()
         logger.addFilter(RankFilter(0))
     # prepare the training data loader
     train_data_loader = prepare_training_data(config)
@@ -324,16 +325,21 @@ def main():
                 )
         if best_metric is not None:
             logger.info(f"===> Epoch[{epoch}] end with testing {metric_scoring}: {parse_metric_for_print(best_metric)}!")
+
+        # update
+        if 'svdd' in config['model_name']:
+            model.update_R(epoch)
+        if scheduler is not None:
+            scheduler.step()
+
     logger.info("Stop Training on best Testing metric {}".format(parse_metric_for_print(best_metric))) 
-    # update
-    if 'svdd' in config['model_name']:
-        model.update_R(epoch)
-    if scheduler is not None:
-        scheduler.step()
 
     # finish wandb run
     if hasattr(wandb, 'run') and wandb.run is not None:
         wandb.finish()
+    
+    if config['ddp']:
+        dist.destroy_process_group()
 
 
 

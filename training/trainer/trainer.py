@@ -198,11 +198,17 @@ class Trainer(object):
             pickle.dump(metric_one_dataset, file)
         self.logger.info(f"Metrics saved to {file_path}")
 
+    @property
+    def model_module(self):
+        if isinstance(self.model, DDP):
+            return self.model.module
+        return self.model
+
     def train_step(self,data_dict):
         if self.config['optimizer']['type']=='sam':
             for i in range(2):
                 predictions = self.model(data_dict)
-                losses = self.model.get_losses(data_dict, predictions)
+                losses = self.model_module.get_losses(data_dict, predictions)
                 if i == 0:
                     pred_first = predictions
                     losses_first = losses
@@ -216,10 +222,7 @@ class Trainer(object):
         else:
 
             predictions = self.model(data_dict)
-            if type(self.model) is DDP:
-                losses = self.model.module.get_losses(data_dict, predictions)
-            else:
-                losses = self.model.get_losses(data_dict, predictions)
+            losses = self.model_module.get_losses(data_dict, predictions)
             self.optimizer.zero_grad()
             losses['overall'].backward()
             self.optimizer.step()
@@ -275,10 +278,7 @@ class Trainer(object):
                 self.swa_model.update_parameters(self.model)
 
             # compute training metric for each batch data
-            if type(self.model) is DDP:
-                batch_metrics = self.model.module.get_train_metrics(data_dict, predictions)
-            else:
-                batch_metrics = self.model.get_train_metrics(data_dict, predictions)
+            batch_metrics = self.model_module.get_train_metrics(data_dict, predictions)
 
             # store data by recorder
             ## store metric
@@ -346,10 +346,10 @@ class Trainer(object):
                     )
                 else:
                     test_best_metric = None
+                
+                if self.config['ddp']:
+                    dist.barrier()
 
-                    # total_end_time = time.time()
-            # total_elapsed_time = total_end_time - total_start_time
-            # print("总花费的时间: {:.2f} 秒".format(total_elapsed_time))
             step_cnt += 1
         return test_best_metric
 

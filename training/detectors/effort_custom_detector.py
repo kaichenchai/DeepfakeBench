@@ -29,9 +29,9 @@ logger = logging.getLogger(__name__)
 
 
 @DETECTOR.register_module(module_name='effort_custom')
-class Effort_Custom_Detector(nn.Module):
+class Effort_Custom_Detector(AbstractDetector):
     def __init__(self, config=None):
-        super(Effort_Custom_Detector, self).__init__()
+        super(Effort_Custom_Detector, self).__init__(config)
         self.config = config
         self.backbone = self.build_backbone(config)
         self.head = nn.Linear(1024, 2)
@@ -62,6 +62,12 @@ class Effort_Custom_Detector(nn.Module):
 
         return clip_model.vision_model
 
+    def build_loss(self, config):
+        # prepare the loss function
+        # This detector uses multiple losses, but we can return the main one here if needed
+        # However, get_losses is overridden to handle the custom logic.
+        return nn.CrossEntropyLoss()
+
     def features(self, data_dict: dict) -> torch.tensor:
         feat = self.backbone(data_dict['image'])['pooler_output']
         return feat
@@ -69,9 +75,9 @@ class Effort_Custom_Detector(nn.Module):
     def classifier(self, features: torch.tensor) -> torch.tensor:
         return self.head(features)
 
-    def get_orthogonal_loss(self) -> dict:
+    def get_orthogonal_loss(self) -> torch.tensor:
         # Regularization term
-        loss = 0.0
+        loss = torch.tensor(0.0, device=next(self.parameters()).device)
         lambda_reg = 0.1
         orthogonal_losses = []
         for module in self.backbone.modules():
@@ -81,31 +87,31 @@ class Effort_Custom_Detector(nn.Module):
         
         if orthogonal_losses:
             reg_term = sum(orthogonal_losses)
-            loss += lambda_reg * reg_term
+            loss = lambda_reg * reg_term
         
         return loss
 
-    def get_weight_loss(self):
+    def get_weight_loss(self) -> torch.tensor:
         weight_sum_dict = {}
-        num_weight_dict = {}
         for name, module in self.backbone.named_modules():
             if isinstance(module, SVDResidualLinear):
                 weight_curr = module.compute_current_weight()
                 if str(weight_curr.size()) not in weight_sum_dict.keys():
                     weight_sum_dict[str(weight_curr.size())] = weight_curr
-                    num_weight_dict[str(weight_curr.size())] = 1
                 else:
-                    weight_sum_dict[str(weight_curr.size())] += weight_curr
-                    num_weight_dict[str(weight_curr.size())] += 1
+                    weight_sum_dict[str(weight_curr.size())] = weight_sum_dict[str(weight_curr.size())] + weight_curr
         
-        loss = 0.0
+        loss = torch.tensor(0.0, device=next(self.parameters()).device)
+        if not weight_sum_dict:
+            return loss
+
         for k in weight_sum_dict.keys():
             _, S_sum, _ = torch.linalg.svd(weight_sum_dict[k], full_matrices=False)
-            loss += -torch.mean(S_sum)
-        loss /= len(weight_sum_dict.keys())
+            loss = loss - torch.mean(S_sum)
+        loss = loss / len(weight_sum_dict.keys())
         return loss
     
-    def get_hsic_loss(self) -> dict:
+    def get_hsic_loss(self) -> torch.tensor:
         hsic_losses = []
         for module in self.backbone.modules():
             if isinstance(module, SVDResidualLinear):
@@ -120,16 +126,16 @@ class Effort_Custom_Detector(nn.Module):
     def get_losses(self, data_dict: dict, pred_dict: dict) -> dict:
         label = data_dict['label']
         pred = pred_dict['cls']
+        device = pred.device
 
         cross_entropy_loss = self.loss_func(pred, label)
         
-        overall_loss = 0
-        overall_loss += cross_entropy_loss
+        overall_loss = cross_entropy_loss
         
         # default cases if not in training
-        scaled_orthogonal_loss = torch.tensor(0.0, device=pred.device).detach()
-        scaled_weight_loss = torch.tensor(0.0, device=pred.device).detach()
-        scaled_hsic_loss = torch.tensor(0.0, device=pred.device).detach()
+        scaled_orthogonal_loss = torch.tensor(0.0, device=device).detach()
+        scaled_weight_loss = torch.tensor(0.0, device=device).detach()
+        scaled_hsic_loss = torch.tensor(0.0, device=device).detach()
         
         # Only compute all of these other losses when training as they are not needed
         if self.training:
@@ -137,19 +143,19 @@ class Effort_Custom_Detector(nn.Module):
                 lambda_orthogonal = self.config['loss_functions']['orthogonal']['lambda']
                 orthogonal_loss = self.get_orthogonal_loss()
                 scaled_orthogonal_loss = lambda_orthogonal * orthogonal_loss
-                overall_loss += scaled_orthogonal_loss
+                overall_loss = overall_loss + scaled_orthogonal_loss
                 
             if 'weight' in self.config['loss_functions']['selected']:
                 lambda_weight = self.config['loss_functions']['weight']['lambda']
                 weight_loss = self.get_weight_loss()
                 scaled_weight_loss = lambda_weight * weight_loss
-                overall_loss += scaled_weight_loss
+                overall_loss = overall_loss + scaled_weight_loss
             
             if 'hsic' in self.config['loss_functions']['selected']:
                 lambda_hsic = self.config['loss_functions']['hsic']['lambda']
                 hsic_loss = self.get_hsic_loss()
                 scaled_hsic_loss = lambda_hsic * hsic_loss
-                overall_loss += scaled_hsic_loss
+                overall_loss = overall_loss + scaled_hsic_loss
 
         # masking for real and fake classification loss
         mask_real = label == 0
@@ -158,21 +164,21 @@ class Effort_Custom_Detector(nn.Module):
         if mask_real.sum() > 0:
             loss_real = self.loss_func(pred[mask_real], label[mask_real])
         else:
-            loss_real = torch.tensor(0.0, device=pred.device)
+            loss_real = torch.tensor(0.0, device=device)
 
         if mask_fake.sum() > 0:
             loss_fake = self.loss_func(pred[mask_fake], label[mask_fake])
         else:
-            loss_fake = torch.tensor(0.0, device=pred.device)
+            loss_fake = torch.tensor(0.0, device=device)
 
         loss_dict = {
             'overall': overall_loss,
             'real_loss': loss_real.detach(),
             'fake_loss': loss_fake.detach(),
             'cross_entropy_loss': cross_entropy_loss.detach(),
-            'hsic_loss': scaled_hsic_loss.detach() if 'hsic' in self.config['loss_functions']['selected'] else torch.tensor(0.0, device=pred.device).detach(),
-            'weight_loss': scaled_weight_loss.detach() if 'weight' in self.config['loss_functions']['selected'] else torch.tensor(0.0, device=pred.device).detach(),
-            'orthogonal_loss': scaled_orthogonal_loss.detach() if 'orthogonal' in self.config['loss_functions']['selected'] else torch.tensor(0.0, device=pred.device).detach(),
+            'hsic_loss': scaled_hsic_loss.detach(),
+            'weight_loss': scaled_weight_loss.detach(),
+            'orthogonal_loss': scaled_orthogonal_loss.detach(),
         }
                 
         return loss_dict
