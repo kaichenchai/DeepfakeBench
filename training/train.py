@@ -47,9 +47,17 @@ parser.add_argument("--test_dataset", nargs="+")
 parser.add_argument('--no-save_ckpt', dest='save_ckpt', action='store_false', default=True)
 parser.add_argument('--no-save_feat', dest='save_feat', action='store_false', default=True)
 parser.add_argument("--ddp", action='store_true', default=False)
-parser.add_argument('--local_rank', type=int, default=0)
+parser.add_argument('--local_rank', type=int, default=-1)
 parser.add_argument('--task_target', type=str, default="", help='specify the target of current training task')
 args = parser.parse_args()
+
+# Handle local_rank from environment (torchrun) or argument (legacy)
+if args.local_rank == -1:
+    if "LOCAL_RANK" in os.environ:
+        args.local_rank = int(os.environ["LOCAL_RANK"])
+    else:
+        args.local_rank = 0
+
 torch.cuda.set_device(args.local_rank)
 
 

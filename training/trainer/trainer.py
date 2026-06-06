@@ -34,7 +34,6 @@ from sklearn import metrics
 from metrics.utils import get_test_metrics
 
 FFpp_pool=['FaceForensics++','FF-DF','FF-F2F','FF-FS','FF-NT']#
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class Trainer(object):
@@ -49,6 +48,9 @@ class Trainer(object):
         time_now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S'),
         swa_model=None
         ):
+        # Determine the correct device for this process
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
         # check if all the necessary components are implemented
         if config is None or model is None or optimizer is None or logger is None:
             raise ValueError("config, model, optimizier, logger must be implemented")
@@ -108,8 +110,8 @@ class Trainer(object):
 
 
     def speed_up(self):
-        self.model.to(device)
-        self.model.device = device
+        self.model.to(self.device)
+        self.model.device = self.device
         if self.config['ddp'] == True:
             num_gpus = torch.cuda.device_count()
             print(f'avai gpus: {num_gpus}')
