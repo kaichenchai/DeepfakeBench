@@ -13,7 +13,10 @@ import json
 import pickle
 import time
 
-import dlib
+try:
+    import dlib
+except ImportError:
+    dlib = None
 import numpy as np
 from copy import deepcopy
 import cv2
@@ -47,9 +50,13 @@ from dataset.abstract_dataset import DeepfakeAbstractBaseDataset
 
 
 # Define face detector and predictor models
-face_detector = dlib.get_frontal_face_detector()
-predictor_path = 'preprocessing/dlib_tools/shape_predictor_81_face_landmarks.dat'
-face_predictor = dlib.shape_predictor(predictor_path)
+if dlib is not None:
+    face_detector = dlib.get_frontal_face_detector()
+    predictor_path = 'preprocessing/dlib_tools/shape_predictor_81_face_landmarks.dat'
+    face_predictor = dlib.shape_predictor(predictor_path)
+else:
+    face_detector = None
+    face_predictor = None
 
 
 mean_face_x = np.array([
