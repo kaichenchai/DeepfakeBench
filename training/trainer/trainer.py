@@ -29,6 +29,7 @@ from metrics.base_metrics_class import Recorder
 from torch.optim.swa_utils import AveragedModel, SWALR
 from torch import distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data.distributed import DistributedSampler
 from sklearn import metrics
 from metrics.utils import get_test_metrics
 
@@ -128,10 +129,17 @@ class Trainer(object):
         if os.path.isfile(model_path):
             saved = torch.load(model_path, map_location='cpu')
             suffix = model_path.split('.')[-1]
+            # When using DDP the underlying module is wrapped; load into module if needed
             if suffix == 'p':
-                self.model.load_state_dict(saved.state_dict())
+                if isinstance(self.model, DDP):
+                    self.model.module.load_state_dict(saved.state_dict())
+                else:
+                    self.model.load_state_dict(saved.state_dict())
             else:
-                self.model.load_state_dict(saved)
+                if isinstance(self.model, DDP):
+                    self.model.module.load_state_dict(saved)
+                else:
+                    self.model.load_state_dict(saved)
             self.logger.info('Model found in {}'.format(model_path))
         else:
             raise NotImplementedError(
@@ -142,7 +150,10 @@ class Trainer(object):
         os.makedirs(save_dir, exist_ok=True)
         ckpt_name = f"ckpt_best.pth"
         save_path = os.path.join(save_dir, ckpt_name)
-        if self.config['ddp'] == True:
+        # If model is wrapped by DDP, save the underlying module's state_dict
+        if isinstance(self.model, DDP):
+            torch.save(self.model.module.state_dict(), save_path)
+        elif self.config['ddp'] == True:
             torch.save(self.model.state_dict(), save_path)
         else:
             if 'svdd' in self.config['model_name']:
@@ -225,6 +236,12 @@ class Trainer(object):
         ):
 
         self.logger.info("===> Epoch[{}] start!".format(epoch))
+        # If using DistributedSampler, set epoch for proper shuffling each epoch
+        if self.config.get('ddp', False) and hasattr(train_data_loader, 'sampler') and isinstance(train_data_loader.sampler, DistributedSampler):
+            try:
+                train_data_loader.sampler.set_epoch(epoch)
+            except Exception:
+                pass
         if epoch>=1:
             times_per_epoch = 2
         else:
