@@ -34,7 +34,6 @@ from sklearn import metrics
 from metrics.utils import get_test_metrics
 
 FFpp_pool=['FaceForensics++','FF-DF','FF-F2F','FF-FS','FF-NT']#
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class Trainer(object):
@@ -49,6 +48,9 @@ class Trainer(object):
         time_now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S'),
         swa_model=None
         ):
+        # Determine the correct device for this process
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
         # check if all the necessary components are implemented
         if config is None or model is None or optimizer is None or logger is None:
             raise ValueError("config, model, optimizier, logger must be implemented")
@@ -108,8 +110,8 @@ class Trainer(object):
 
 
     def speed_up(self):
-        self.model.to(device)
-        self.model.device = device
+        self.model.to(self.device)
+        self.model.device = self.device
         if self.config['ddp'] == True:
             num_gpus = torch.cuda.device_count()
             print(f'avai gpus: {num_gpus}')
@@ -150,18 +152,18 @@ class Trainer(object):
         os.makedirs(save_dir, exist_ok=True)
         ckpt_name = f"ckpt_best.pth"
         save_path = os.path.join(save_dir, ckpt_name)
-        # If model is wrapped by DDP, save the underlying module's state_dict
-        if isinstance(self.model, DDP):
-            torch.save(self.model.module.state_dict(), save_path)
-        elif self.config['ddp'] == True:
-            torch.save(self.model.state_dict(), save_path)
+        
+        if 'svdd' in self.config['model_name']:
+            # Use model_module to access SVDD attributes like R and c when in DDP
+            torch.save({
+                'R': self.model_module.R,
+                'c': self.model_module.c,
+                'state_dict': self.model_module.state_dict(),
+            }, save_path)
         else:
-            if 'svdd' in self.config['model_name']:
-                torch.save({'R': self.model.R,
-                            'c': self.model.c,
-                            'state_dict': self.model.state_dict(),}, save_path)
-            else:
-                torch.save(self.model.state_dict(), save_path)
+            # Always save the underlying module's state_dict to avoid 'module.' prefix issues
+            torch.save(self.model_module.state_dict(), save_path)
+            
         self.logger.info(f"Checkpoint saved to {save_path}, current ckpt is {ckpt_info}")
 
     def save_swa_ckpt(self):
@@ -198,11 +200,17 @@ class Trainer(object):
             pickle.dump(metric_one_dataset, file)
         self.logger.info(f"Metrics saved to {file_path}")
 
+    @property
+    def model_module(self):
+        if isinstance(self.model, DDP):
+            return self.model.module
+        return self.model
+
     def train_step(self,data_dict):
         if self.config['optimizer']['type']=='sam':
             for i in range(2):
                 predictions = self.model(data_dict)
-                losses = self.model.get_losses(data_dict, predictions)
+                losses = self.model_module.get_losses(data_dict, predictions)
                 if i == 0:
                     pred_first = predictions
                     losses_first = losses
@@ -216,10 +224,7 @@ class Trainer(object):
         else:
 
             predictions = self.model(data_dict)
-            if type(self.model) is DDP:
-                losses = self.model.module.get_losses(data_dict, predictions)
-            else:
-                losses = self.model.get_losses(data_dict, predictions)
+            losses = self.model_module.get_losses(data_dict, predictions)
             self.optimizer.zero_grad()
             losses['overall'].backward()
             self.optimizer.step()
@@ -248,7 +253,7 @@ class Trainer(object):
             times_per_epoch = 1
 
 
-        #times_per_epoch=4
+        # times_per_epoch=4
 
         test_step = len(train_data_loader) // times_per_epoch    # test 10 times per epoch
         step_cnt = epoch * len(train_data_loader)
@@ -259,6 +264,8 @@ class Trainer(object):
         # define training recorder
         train_recorder_loss = defaultdict(Recorder)
         train_recorder_metric = defaultdict(Recorder)
+        
+        test_best_metric = None
 
         for iteration, data_dict in tqdm(enumerate(train_data_loader),total=len(train_data_loader)):
             self.setTrain()
@@ -275,10 +282,7 @@ class Trainer(object):
                 self.swa_model.update_parameters(self.model)
 
             # compute training metric for each batch data
-            if type(self.model) is DDP:
-                batch_metrics = self.model.module.get_train_metrics(data_dict, predictions)
-            else:
-                batch_metrics = self.model.get_train_metrics(data_dict, predictions)
+            batch_metrics = self.model_module.get_train_metrics(data_dict, predictions)
 
             # store data by recorder
             ## store metric
@@ -346,10 +350,10 @@ class Trainer(object):
                     )
                 else:
                     test_best_metric = None
+                
+                if self.config['ddp']:
+                    dist.barrier()
 
-                    # total_end_time = time.time()
-            # total_elapsed_time = total_end_time - total_start_time
-            # print("总花费的时间: {:.2f} 秒".format(total_elapsed_time))
             step_cnt += 1
         return test_best_metric
 
@@ -377,7 +381,7 @@ class Trainer(object):
             # move data to GPU elegantly
             for key in data_dict.keys():
                 if data_dict[key]!=None:
-                    data_dict[key]=data_dict[key].cuda()
+                    data_dict[key]=data_dict[key].to(self.device)
             # model forward without considering gradient computation
             predictions = self.inference(data_dict)
             label_lists += list(data_dict['label'].cpu().detach().numpy())
@@ -385,10 +389,7 @@ class Trainer(object):
             feature_lists += list(predictions['feat'].cpu().detach().numpy())
             if type(self.model) is not AveragedModel:
                 # compute all losses for each batch data
-                if type(self.model) is DDP:
-                    losses = self.model.module.get_losses(data_dict, predictions)
-                else:
-                    losses = self.model.get_losses(data_dict, predictions)
+                losses = self.model_module.get_losses(data_dict, predictions)
 
                 # store data by recorder
                 for name, value in losses.items():
@@ -488,5 +489,6 @@ class Trainer(object):
 
     @torch.no_grad()
     def inference(self, data_dict):
-        predictions = self.model(data_dict, inference=True)
+        # Use the underlying module directly to avoid DDP synchronization during evaluation
+        predictions = self.model_module(data_dict, inference=True)
         return predictions

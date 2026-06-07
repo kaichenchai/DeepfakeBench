@@ -47,9 +47,17 @@ parser.add_argument("--test_dataset", nargs="+")
 parser.add_argument('--no-save_ckpt', dest='save_ckpt', action='store_false', default=True)
 parser.add_argument('--no-save_feat', dest='save_feat', action='store_false', default=True)
 parser.add_argument("--ddp", action='store_true', default=False)
-parser.add_argument('--local_rank', type=int, default=0)
+parser.add_argument('--local_rank', type=int, default=-1)
 parser.add_argument('--task_target', type=str, default="", help='specify the target of current training task')
 args = parser.parse_args()
+
+# Handle local_rank from environment (torchrun) or argument (legacy)
+if args.local_rank == -1:
+    if "LOCAL_RANK" in os.environ:
+        args.local_rank = int(os.environ["LOCAL_RANK"])
+    else:
+        args.local_rank = 0
+
 torch.cuda.set_device(args.local_rank)
 
 
@@ -291,6 +299,7 @@ def main():
             backend='nccl',
             timeout=timedelta(minutes=30)
         )
+        dist.barrier()
         logger.addFilter(RankFilter(0))
     # prepare the training data loader
     train_data_loader = prepare_training_data(config)
@@ -324,16 +333,21 @@ def main():
                 )
         if best_metric is not None:
             logger.info(f"===> Epoch[{epoch}] end with testing {metric_scoring}: {parse_metric_for_print(best_metric)}!")
+
+        # update
+        if 'svdd' in config['model_name']:
+            model.update_R(epoch)
+        if scheduler is not None:
+            scheduler.step()
+
     logger.info("Stop Training on best Testing metric {}".format(parse_metric_for_print(best_metric))) 
-    # update
-    if 'svdd' in config['model_name']:
-        model.update_R(epoch)
-    if scheduler is not None:
-        scheduler.step()
 
     # finish wandb run
     if hasattr(wandb, 'run') and wandb.run is not None:
         wandb.finish()
+    
+    if config['ddp']:
+        dist.destroy_process_group()
 
 
 
