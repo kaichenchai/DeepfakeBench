@@ -19,9 +19,9 @@ source .venv/bin/activate
 # - nproc_per_node=4 matches the 4 GPUs requested above
 torchrun --nproc_per_node=4 \
     training/train.py \
-    --detector_path ./training/config/detector/effort_ce.yaml \
-    --train_dataset "UADFV" \
-    --test_dataset "UADFV" \
+    --detector_path ./training/config/detector/effort_ce_one_epoch.yaml \
+    --train_dataset "FaceForensics++" \
+    --test_dataset "FaceForensics++" \
     --ddp
 
 echo "Training job finished."
