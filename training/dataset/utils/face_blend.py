@@ -6,7 +6,10 @@ so as to supervize the activation of Conv layer.
 import os
 import numpy as np
 import cv2
-import dlib
+try:
+    import dlib
+except ImportError:
+    dlib = None
 import random
 import argparse
 from tqdm import tqdm

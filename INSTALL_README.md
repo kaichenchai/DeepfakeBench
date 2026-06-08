@@ -19,7 +19,7 @@ Download the distribution from `uv sync`
 
 ## Repo Setup
 - Download OpenAI Clip weights from Google Drive: https://drive.google.com/drive/folders/1fm3Jd8lFMiSP1qgdmsxfqlJZGpr_bXsx
-- Point Effort model to downloaded weights folder - default is in repo root, just need to download safetensors
+- Point Effort model to downloaded weights folder - default is in repo root, just need to download safetensors: https://drive.google.com/drive/folders/19kQwGDjF18uk78EnnypxxOLaG4Aa4v1h
 - Download face features extraction model from: https://github.com/kaichenchai/Effort-AIGI-Detection/blob/main/DeepfakeBench/preprocessing/shape_predictor_81_face_landmarks.dat with `curl -L -O curl -L -O https://github.com/kaichenchai/Effort-AIGI-Detection/raw/refs/heads/main/DeepfakeBench/preprocessing/shape_predictor_81_face_landmarks.dat` -  goes in ./preprocessing/dlib_tools/
 - Datasets: https://drive.google.com/drive/folders/1T4ajtH-7PTAmDYWjn27XNOONXs7KjQWk - place in datasets/rgb/name....
 - Labels: from above dataset link, may have to replace "\\" to "/" to get image paths reading properly - go in ./preprocessing/dataset.json

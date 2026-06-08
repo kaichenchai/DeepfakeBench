@@ -1,4 +1,7 @@
-import dlib
+try:
+    import dlib
+except ImportError:
+    dlib = None
 from skimage import io
 from skimage import transform as sktransform
 import numpy as np
