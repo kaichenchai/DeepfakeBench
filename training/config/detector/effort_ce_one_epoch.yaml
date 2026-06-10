@@ -1,7 +1,7 @@
 # log dir 
 log_dir: ./logs
 
-run_name: effort_ce
+run_name: effort_ce_one_epoch
 
 # model setting
 pretrained: 'no need to provide this for the effort model'
