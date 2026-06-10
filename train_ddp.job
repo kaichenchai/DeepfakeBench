@@ -5,7 +5,7 @@
 #rj taskspernode=1
 #rj cpus=*
 #rj mem=200G
-#rj runtime=1
+#rj runtime=2
 #rj logdir=logs/slurm
 #rj priority=550
 
