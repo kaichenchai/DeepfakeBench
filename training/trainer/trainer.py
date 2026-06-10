@@ -272,7 +272,7 @@ class Trainer(object):
             # more elegant and more scalable way of moving data to GPU
             for key in data_dict.keys():
                 if data_dict[key]!=None and key!='name':
-                    data_dict[key]=data_dict[key].to(device)
+                    data_dict[key]=data_dict[key].to(self.device)
 
             losses,predictions=self.train_step(data_dict)
 
