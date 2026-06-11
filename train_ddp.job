@@ -5,7 +5,7 @@
 #rj taskspernode=1
 #rj cpus=*
 #rj mem=200G
-#rj runtime=2
+#rj runtime=6
 #rj logdir=logs/slurm
 #rj priority=550
 
@@ -15,13 +15,28 @@ set -euo pipefail
 # Activate virtual environment managed by uv
 source .venv/bin/activate
 
+# Redirect multiprocessing temp dir to local storage to avoid
+# "Device or resource busy" errors on Lustre during worker cleanup
+export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}
+mkdir -p "$TMPDIR"
+
 # Execute training using torchrun
 # - nproc_per_node=4 matches the 4 GPUs requested above
 torchrun --nproc_per_node=4 \
     training/train.py \
-    --detector_path ./training/config/detector/effort_ce_one_epoch.yaml \
+    --detector_path ./training/config/detector/effort_ce.yaml \
     --train_dataset "FaceForensics++" \
     --test_dataset "FaceForensics++" \
     --ddp
+
+torchrun --nproc_per_node=4 \
+    training/train.py \
+    --detector_path ./training/config/detector/effort_ce_hsic.yaml \
+    --train_dataset "FaceForensics++" \
+    --test_dataset "FaceForensics++" \
+    --ddp
+
+# Clean up local temp directory
+rm -rf "$TMPDIR"
 
 echo "Training job finished."

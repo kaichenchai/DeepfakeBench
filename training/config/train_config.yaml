@@ -7,6 +7,7 @@ dataset_json_folder: './preprocessing/dataset_json'
 SWA: False
 save_avg: True
 log_dir: ./logs/training/
+train_log_interval: 10
 
 # Wandb experiment tracking
 wandb:
