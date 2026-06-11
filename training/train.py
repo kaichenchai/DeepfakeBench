@@ -347,6 +347,17 @@ def main():
 
     logger.info("Stop Training on best Testing metric {}".format(parse_metric_for_print(best_metric))) 
 
+    # save the final checkpoint (regardless of whether it was the best)
+    if config['save_ckpt']:
+        final_ckpt_dir = os.path.join(logger_path, 'final')
+        os.makedirs(final_ckpt_dir, exist_ok=True)
+        final_ckpt_path = os.path.join(final_ckpt_dir, 'ckpt_final.pth')
+        if config['ddp']:
+            torch.save(trainer.model.module.state_dict(), final_ckpt_path)
+        else:
+            torch.save(trainer.model.state_dict(), final_ckpt_path)
+        logger.info(f"Final checkpoint saved to {final_ckpt_path}")
+
     # finish wandb run
     if hasattr(wandb, 'run') and wandb.run is not None:
         wandb.finish()
