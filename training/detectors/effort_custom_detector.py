@@ -286,6 +286,60 @@ class Effort_Custom_Detector(AbstractDetector):
 
         return pred_dict
 
+    # ------------------------------------------------------------------
+    # Serialisation helpers
+    # ------------------------------------------------------------------
+    def state_dict(self, destination=None, prefix='', keep_vars=False):
+        """
+        Return a state_dict containing ONLY the trainable parts:
+          - backbone (with its SVDResidualLinear residual params)
+          - head
+
+        The counterfactual backbone is NOT saved because it is purely
+        derived from the backbone (deepcopy + zeroed S_residual).
+        """
+        sd = super().state_dict(destination, prefix, keep_vars)
+
+        # Strip out counterfactual_backbone keys so they are never
+        # accidentally loaded into a differently-shaped model.
+        keys_to_remove = [k for k in sd if k.startswith(prefix + 'counterfactual_backbone')]
+        for k in keys_to_remove:
+            del sd[k]
+
+        return sd
+
+    def load_state_dict(self, state_dict, strict: bool = True):
+        """
+        Load backbone + head weights.  Afterwards, if a counterfactual
+        backbone exists, rebuild it from the (now updated) backbone so
+        that it stays in sync.
+        """
+        # Allow missing counterfactual_backbone keys when the saved
+        # checkpoint was produced by state_dict() above.
+        if hasattr(self, 'counterfactual_backbone') and self.counterfactual_backbone is not None:
+            # Temporarily set strict=False if we only care about backbone
+            # mismatches caused by missing cf keys.
+            super().load_state_dict(state_dict, strict=False)
+            # Re-sync the counterfactual backbone from the loaded backbone.
+            self._rebuild_counterfactual_backbone()
+        else:
+            super().load_state_dict(state_dict, strict=strict)
+
+    def _rebuild_counterfactual_backbone(self):
+        """
+        Re-create the counterfactual backbone in-place so it mirrors
+        the current backbone.  Called after loading weights.
+        """
+        cf = copy.deepcopy(self.backbone)
+        for module in cf.modules():
+            if isinstance(module, SVDResidualLinear) and module.S_residual is not None:
+                module.S_residual = nn.Parameter(
+                    torch.zeros_like(module.S_residual), requires_grad=False
+                )
+        for param in cf.parameters():
+            param.requires_grad = False
+        self.counterfactual_backbone = cf
+
 
 # Custom module to represent the residual using SVD components
 class SVDResidualLinear(nn.Module):
@@ -301,8 +355,15 @@ class SVDResidualLinear(nn.Module):
             self.weight_main.data.copy_(init_weight)
         else:
             nn.init.kaiming_uniform_(self.weight_main, a=math.sqrt(5))
-        
-        # For HSIC loss calculation        
+
+        # optional residual parameters – registered as None so they always
+        # appear in state_dict() / load_state_dict() with consistent keys.
+        # replace_with_svd_residual() overwrites them with real tensors.
+        self.register_parameter('U_residual', None)
+        self.register_parameter('V_residual', None)
+        self.register_parameter('S_residual', None)
+
+        # For HSIC loss calculation
         self.hsic_loss_func = HSICLoss()
         self.cached_main_features = None
         self.cached_residual_features = None
