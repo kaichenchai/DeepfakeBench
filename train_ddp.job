@@ -32,14 +32,21 @@ torchrun --nproc_per_node=4 \
 
 torchrun --nproc_per_node=4 \
     training/train.py \
-    --detector_path ./training/config/detector/effort_ce_hsic_weight.yaml \
+    --detector_path ./training/config/detector/effort_ce_hsic_orthogonal_weight.yaml \
     --train_dataset "FaceForensics++" \
     --test_dataset "FaceForensics++" \
     --ddp
 
 torchrun --nproc_per_node=4 \
     training/train.py \
-    --detector_path ./training/config/detector/effort_ce_hsic_orthogonal_weight.yaml \
+    --detector_path ./training/config/detector/effort_ce_weight.yaml \
+    --train_dataset "FaceForensics++" \
+    --test_dataset "FaceForensics++" \
+    --ddp
+
+torchrun --nproc_per_node=4 \
+    training/train.py \
+    --detector_path ./training/config/detector/effort_ce_hsic_weight.yaml \
     --train_dataset "FaceForensics++" \
     --test_dataset "FaceForensics++" \
     --ddp
