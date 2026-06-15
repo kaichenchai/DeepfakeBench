@@ -442,12 +442,11 @@ class SVDResidualLinear(nn.Module):
 
         assert self.cached_main_features.shape == self.cached_residual_features.shape, f"Main and residual features must have the same shape for HSIC loss computation: {self.cached_main_features.shape} vs {self.cached_residual_features.shape}"
 
-        # Shape of cached features is [batch, sequence_length, feature_dim].
-        # Use the CLS token (index 0) and treat the batch as the samples dimension.
-        # This gives m = batch_size (e.g. 8) instead of m = 257 (sequence length),
-        main_feat = self.cached_main_features[:, 0, :]    # [batch, feature_dim], already detached when cached in forward
-        residual_feat = self.cached_residual_features[:, 0, :]     # [batch, feature_dim]
-
+        # testing using reshaped tensors of shape [B·N, D] where B is batch size, N is sequence length (number of patches + cls token), D is feature dimension
+        B, N, D = self.cached_main_features.shape
+        main_feat = self.cached_main_features.reshape(B * N, D)      # [B·N, D]
+        residual_feat = self.cached_residual_features.reshape(B * N, D)  # [B·N, D]
+        
         # Free the full cached tensors now that we have the slices we need.
         self.cached_main_features = None
         self.cached_residual_features = None
