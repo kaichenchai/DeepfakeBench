@@ -25,28 +25,7 @@ mkdir -p "$TMPDIR"
 
 torchrun --nproc_per_node=4 \
     training/train.py \
-    --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone.yaml \
-    --train_dataset "FaceForensics++" \
-    --test_dataset "FaceForensics++" \
-    --ddp
-
-torchrun --nproc_per_node=4 \
-    training/train.py \
-    --detector_path ./training/config/detector/effort_ce_hsic_masked_counterfactual_backbone.yaml \
-    --train_dataset "FaceForensics++" \
-    --test_dataset "FaceForensics++" \
-    --ddp
-
-torchrun --nproc_per_node=4 \
-    training/train.py \
-    --detector_path ./training/config/detector/effort_ce_hsic_orthogonal_masked_counterfactual_backbone.yaml \
-    --train_dataset "FaceForensics++" \
-    --test_dataset "FaceForensics++" \
-    --ddp
-
-torchrun --nproc_per_node=4 \
-    training/train.py \
-    --detector_path ./training/config/detector/effort_ce_hsic_orthogonal_weight_masked_counterfactual_backbone.yaml \
+    --detector_path ./training/config/detector/effort_ce_hsic_reshaped_cached_sigma.yaml \
     --train_dataset "FaceForensics++" \
     --test_dataset "FaceForensics++" \
     --ddp
