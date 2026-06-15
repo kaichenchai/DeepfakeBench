@@ -313,32 +313,26 @@ class Effort_Custom_Detector(AbstractDetector):
         Load backbone + head weights.  Afterwards, if a counterfactual
         backbone exists, rebuild it from the (now updated) backbone so
         that it stays in sync.
-        """
-        # Allow missing counterfactual_backbone keys when the saved
-        # checkpoint was produced by state_dict() above.
-        if hasattr(self, 'counterfactual_backbone') and self.counterfactual_backbone is not None:
-            # Temporarily set strict=False if we only care about backbone
-            # mismatches caused by missing cf keys.
-            super().load_state_dict(state_dict, strict=False)
-            # Re-sync the counterfactual backbone from the loaded backbone.
-            self._rebuild_counterfactual_backbone()
-        else:
-            super().load_state_dict(state_dict, strict=strict)
 
-    def _rebuild_counterfactual_backbone(self):
+        Returns a ``_IncompatibleKeys`` namedtuple with fields
+        ``missing_keys`` and ``unexpected_keys`` (same as
+        ``nn.Module.load_state_dict``).
         """
-        Re-create the counterfactual backbone in-place so it mirrors
-        the current backbone.  Called after loading weights.
-        """
-        cf = copy.deepcopy(self.backbone)
-        for module in cf.modules():
-            if isinstance(module, SVDResidualLinear) and module.S_residual is not None:
-                module.S_residual = nn.Parameter(
-                    torch.zeros_like(module.S_residual), requires_grad=False
-                )
-        for param in cf.parameters():
-            param.requires_grad = False
-        self.counterfactual_backbone = cf
+        if hasattr(self, 'counterfactual_backbone') and self.counterfactual_backbone is not None:
+            # The saved checkpoint (produced by our state_dict() override)
+            # will NOT contain counterfactual_backbone keys.  Strip them
+            # from the incoming dict so we can still call super() with the
+            # caller's requested strictness, catching genuine mismatches.
+            filtered = {
+                k: v for k, v in state_dict.items()
+                if not k.startswith('counterfactual_backbone.')
+            }
+            result = super().load_state_dict(filtered, strict=strict)
+            # Re-sync the counterfactual backbone from the loaded backbone.
+            self.counterfactual_backbone = self.build_counterfactual_backbone(self.backbone)
+            return result
+        else:
+            return super().load_state_dict(state_dict, strict=strict)
 
 
 # Custom module to represent the residual using SVD components
