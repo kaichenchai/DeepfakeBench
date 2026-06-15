@@ -440,15 +440,22 @@ class SVDResidualLinear(nn.Module):
         if self.cached_main_features is None or self.cached_residual_features is None:
             return torch.tensor(0.0, device=self.weight_main.device)
 
-        assert self.cached_main_features.shape == self.cached_residual_features.shape, f"Main and residual features must have the same shape for HSIC loss computation: {self.cached_main_features.shape} vs {self.cached_residual_features.shape}"
+        assert self.cached_main_features.shape == self.cached_residual_features.shape, \
+            f"Main and residual features must have the same shape for HSIC loss computation: " \
+            f"{self.cached_main_features.shape} vs {self.cached_residual_features.shape}"
 
-        # Shape of cached features is [batch, sequence_length, feature_dim].
-        # Use the CLS token (index 0) and treat the batch as the samples dimension.
-        # This gives m = batch_size (e.g. 8) instead of m = 257 (sequence length),
-        main_feat = self.cached_main_features[:, 0, :]    # [batch, feature_dim], already detached when cached in forward
-        residual_feat = self.cached_residual_features[:, 0, :]     # [batch, feature_dim]
+        # Shape of cached features: [batch, num_tokens, feature_dim]
+        # e.g. [16, 257, 1024] for ViT-L/14 @ 224×224
+        #
+        # Instead of using only the CLS token (which gives m = batch_size
+        # and discards 256 patch tokens), we flatten ALL tokens into the
+        # sample dimension.  This gives m = batch_size × num_tokens
+        # (e.g. 16 × 257 = 4112), dramatically reducing estimator variance.
+        B, N, D = self.cached_main_features.shape
+        main_feat = self.cached_main_features.reshape(B * N, D)      # [B·N, D]
+        residual_feat = self.cached_residual_features.reshape(B * N, D)  # [B·N, D]
 
-        # Free the full cached tensors now that we have the slices we need.
+        # Free the full cached tensors now that we have reshaped copies.
         self.cached_main_features = None
         self.cached_residual_features = None
 
