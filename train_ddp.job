@@ -1,13 +1,9 @@
 #!/bin/bash
-#rj name=effort_ce_ddp
+#rj name=effort_ce_hsic_reshaped_cached_ddp
 #rj gpus=a100:4
-#rj nodes=1
-#rj taskspernode=1
-#rj cpus=*
-#rj mem=200G
-#rj runtime=12
+#rj runtime=3
 #rj logdir=logs/slurm
-#rj priority=550
+#rj priority=600
 
 # Bash Strict Mode
 set -euo pipefail
