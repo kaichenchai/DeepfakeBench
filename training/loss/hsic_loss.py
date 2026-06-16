@@ -19,12 +19,11 @@ from metrics.registry import LOSSFUNC
 @LOSSFUNC.register_module(module_name="hsic")
 class HSICLoss(AbstractLossClass):
     """
-    CKA-normalized HSIC loss using an RBF kernel with a **fixed** bandwidth.
+    CKA-normalized HSIC loss using an RBF kernel with per‑batch bandwidth.
 
     Fixes applied over the original implementation:
-      1. FIXED BANDWIDTH – sigma is computed once from the first batch of
-         frozen (main) features and kept constant.  This makes the measure
-         stationary across training steps.
+      1. PER‑BATCH BANDWIDTH – sigma is recomputed from the current batch's
+         features on every call, so the kernel adapts to the local distribution.
       2. PROPER RBF FORM – uses exp(-||x-y||² / (2·σ²)) with the median
          heuristic applied to squared distances (as in Kornblith et al.).
       3. CKA NORMALISATION – returns CKA(K,L) = HSIC(K,L)/√(HSIC(K,K)·HSIC(L,L))
@@ -54,10 +53,6 @@ class HSICLoss(AbstractLossClass):
         super().__init__()
         self.threshold = threshold
         self.unbiased = unbiased
-        # Registered as a *buffer* so it persists across forward calls,
-        # is moved to the correct device by .to(), but is NOT a trainable
-        # parameter.  Computed once on the first call to forward().
-        self.register_buffer("sigma_sq", None)
 
     # ------------------------------------------------------------------
     # Kernel helpers
@@ -90,12 +85,13 @@ class HSICLoss(AbstractLossClass):
 
             K_ij = exp( -||x_i - x_j||² / (2 · threshold² · σ²) )
 
-        where σ² is the median squared distance computed from the *first*
-        batch of frozen features (stored in ``self.sigma_sq``).
+        where σ² is the median squared distance computed from **this call's**
+        input x (per-batch, no caching).
         """
         sq_dists = self._pairwise_sq_distances(x)
+        sigma_sq = self._median_sq_bandwidth(sq_dists)
         # bandwidth = 2 · threshold² · σ²   (Kornblith et al. convention)
-        bandwidth = 2.0 * (self.threshold ** 2) * self.sigma_sq
+        bandwidth = 2.0 * (self.threshold ** 2) * sigma_sq
         return torch.exp(-sq_dists / bandwidth)
 
     # ------------------------------------------------------------------
@@ -170,8 +166,8 @@ class HSICLoss(AbstractLossClass):
         """
         Compute CKA = HSIC(K, L) / √(HSIC(K, K) · HSIC(L, L)).
 
-        The RBF bandwidth σ² is fixed to the value computed from ``x`` on the
-        very first call, then reused for every subsequent call.
+        The RBF bandwidth σ² is recomputed per call from the current inputs,
+        so the kernel adapts to each batch's feature distribution.
 
         Returns a scalar in [0, 1] cast to the same dtype as ``x``.
         """
@@ -181,11 +177,6 @@ class HSICLoss(AbstractLossClass):
 
         # ---- float64 for numerical stability (ckatorch convention) ----
         x64, y64 = x.to(torch.float64), y.to(torch.float64)
-
-        # ---- fix sigma on first call ----
-        if self.sigma_sq is None:
-            sq_dists_x = self._pairwise_sq_distances(x64)
-            self.sigma_sq = self._median_sq_bandwidth(sq_dists_x).detach()
 
         K = self._rbf_kernel(x64)
         L = self._rbf_kernel(y64)
