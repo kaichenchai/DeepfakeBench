@@ -185,11 +185,22 @@ class HSICLoss(AbstractLossClass):
         hsic_kk = self._hsic_fn(K, K)
         hsic_ll = self._hsic_fn(L, L)
 
-        denom = torch.sqrt(hsic_kk * hsic_ll)
+        # Unbiased HSIC₁ can produce negative values for self-HSIC terms
+        # (K=K, L=L) due to estimation variance.  Clamp to ≥ 0 so that
+        # sqrt() doesn't return NaN and the gradient of division is finite.
+        hsic_kk = torch.clamp(hsic_kk, min=0.0)
+        hsic_ll = torch.clamp(hsic_ll, min=0.0)
+
+        # Small epsilon inside sqrt prevents infinite gradient (1/√0) in
+        # the backward pass when both HSIC terms are exactly zero.
+        denom = torch.sqrt(hsic_kk * hsic_ll + 1e-12)
         if denom < 1e-12:
             return torch.tensor(0.0, device=x.device, requires_grad=True)
 
         cka = hsic_kl / denom
+        # Clamp output to [0, 1] — the theoretical CKA range — to guard
+        # against floating-point overshoot.
+        cka = torch.clamp(cka, 0.0, 1.0)
         return cka.to(x.dtype)
 
     # ------------------------------------------------------------------
