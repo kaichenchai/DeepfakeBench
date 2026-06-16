@@ -8,10 +8,6 @@ from metrics.registry import LOSSFUNC
 class HSICLoss(AbstractLossClass):
     def __init__(self):
         super().__init__()
-        # we store the median sigma from the frozen main weights
-        # use same sigma for both frozen and residual features to ensure they are in the same RKHS
-        # keep as buffer so it is cached across batches/epochs but not learnable
-        self.register_buffer("median_sigma", None)
         
     def pairwise_distances(self, x):
         #x should be two dimensional
@@ -39,12 +35,12 @@ class HSICLoss(AbstractLossClass):
         if m <= 1:
             return torch.tensor(0.0, device=x.device, requires_grad=True)
             
-        if self.median_sigma is None:
-            # Compute median sigma from the frozen features and store it for future use
-            self.median_sigma = self.median_bandwidth(self.pairwise_distances(x))
+        # Compute per-batch median sigma from frozen features (x)
+        # Same sigma used for both K and L
+        sigma = self.median_bandwidth(self.pairwise_distances(x))
             
-        K = self.GaussianKernelMatrix(x,self.median_sigma)
-        L = self.GaussianKernelMatrix(y,self.median_sigma)
+        K = self.GaussianKernelMatrix(x, sigma)
+        L = self.GaussianKernelMatrix(y, sigma)
         device = x.device
         dtype = x.dtype
         H = torch.eye(m, device=device, dtype=dtype) - (1.0/m) * torch.ones((m, m), device=device, dtype=dtype)
