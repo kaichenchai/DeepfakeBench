@@ -1,13 +1,9 @@
 #!/bin/bash
-#rj name=effort_ce_ddp
-#rj gpus=a100:4
-#rj nodes=1
-#rj taskspernode=1
-#rj cpus=*
-#rj mem=200G
-#rj runtime=12
+#rj name=effort_hsic_orthogonal_weight_cf_bb
+#rj runtime=3
 #rj logdir=logs/slurm
 #rj priority=550
+#rj features=a100
 
 # Bash Strict Mode
 set -euo pipefail
@@ -20,36 +16,33 @@ source .venv/bin/activate
 export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}
 mkdir -p "$TMPDIR"
 
-# Execute training using torchrun
-# - nproc_per_node=4 matches the 4 GPUs requested above
+# torchrun --nproc_per_node=2 \
+#     training/train.py \
+#     --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone.yaml \
+#     --train_dataset "FaceForensics++" \
+#     --test_dataset "FaceForensics++" \
+#     --ddp
 
-torchrun --nproc_per_node=4 \
-    training/train.py \
-    --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone.yaml \
-    --train_dataset "FaceForensics++" \
-    --test_dataset "FaceForensics++" \
-    --ddp
+# torchrun --nproc_per_node=2 \
+#     training/train.py \
+#     --detector_path ./training/config/detector/effort_ce_hsic_masked_counterfactual_backbone.yaml \
+#     --train_dataset "FaceForensics++" \
+#     --test_dataset "FaceForensics++" \
+#     --ddp
 
-torchrun --nproc_per_node=4 \
-    training/train.py \
-    --detector_path ./training/config/detector/effort_ce_hsic_masked_counterfactual_backbone.yaml \
-    --train_dataset "FaceForensics++" \
-    --test_dataset "FaceForensics++" \
-    --ddp
+# torchrun --nproc_per_node=2 \
+#     training/train.py \
+#     --detector_path ./training/config/detector/effort_ce_hsic_orthogonal_masked_counterfactual_backbone.yaml \
+#     --train_dataset "FaceForensics++" \
+#     --test_dataset "FaceForensics++" \
+#     --ddp
 
-torchrun --nproc_per_node=4 \
-    training/train.py \
-    --detector_path ./training/config/detector/effort_ce_hsic_orthogonal_masked_counterfactual_backbone.yaml \
-    --train_dataset "FaceForensics++" \
-    --test_dataset "FaceForensics++" \
-    --ddp
-
-torchrun --nproc_per_node=4 \
-    training/train.py \
-    --detector_path ./training/config/detector/effort_ce_hsic_orthogonal_weight_masked_counterfactual_backbone.yaml \
-    --train_dataset "FaceForensics++" \
-    --test_dataset "FaceForensics++" \
-    --ddp
+# torchrun --nproc_per_node=2 \
+#     training/train.py \
+#     --detector_path ./training/config/detector/effort_ce_hsic_orthogonal_weight_masked_counterfactual_backbone.yaml \
+#     --train_dataset "FaceForensics++" \
+#     --test_dataset "FaceForensics++" \
+#     --ddp
 
 # Clean up local temp directory
 rm -rf "$TMPDIR"
