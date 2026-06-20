@@ -20,7 +20,7 @@ from .base_detector import AbstractDetector
 from detectors import DETECTOR
 from networks import BACKBONE
 from loss import LOSSFUNC
-from loss.hsic_loss import HSICLoss
+from loss.cka_loss import CKALoss
 
 import loralib as lora
 from transformers import AutoProcessor, CLIPModel, ViTModel, ViTConfig
@@ -358,7 +358,7 @@ class SVDResidualLinear(nn.Module):
         self.register_parameter('S_residual', None)
 
         # For HSIC loss calculation
-        self.hsic_loss_func = HSICLoss()
+        self.hsic_loss_func = CKALoss()
         self.cached_main_features = None
         self.cached_residual_features = None
 
