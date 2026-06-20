@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euo pipefail
+
 # activate the virtual environment, if not already activated
 source .venv/bin/activate
 
