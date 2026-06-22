@@ -1,0 +1,90 @@
+#!/bin/bash
+#rj name=effort_cross_dataset_test
+#rj runtime=3
+#rj logdir=logs/slurm/cross_dataset_test
+#rj priority=550
+#rj features=a100
+
+
+WEIGHTS="./logs/training/effort_ce_effort_custom_2026-06-11-14-17-47/final/ckpt_final.pth"
+DETECTOR_CONFIG="./training/config/detector/effort_ce_hsic.yaml"
+
+
+echo "=============================================="
+echo "  [job] Job started at $(date)"
+echo "  [job] SLURM_JOB_ID=${SLURM_JOB_ID:-N/A}"
+echo "  [job] Hostname: $(hostname)"
+echo "  [job] Working dir: $(pwd)"
+echo "=============================================="
+
+echo "[job] Activating virtual environment..."
+# Activate virtual environment managed by uv
+if [ -f .venv/bin/activate ]; then
+    source .venv/bin/activate
+    echo "[job] Virtual environment activated."
+else
+    echo "[job] ERROR: .venv/bin/activate not found! Searching for python..."
+fi
+
+PYTHON_BIN="$(command -v python3 || command -v python || echo 'NOT_FOUND')"
+echo "[job] Python binary: ${PYTHON_BIN}"
+if [ "${PYTHON_BIN}" != "NOT_FOUND" ]; then
+    ${PYTHON_BIN} --version 2>&1 || true
+else
+    echo "[job] ERROR: No Python found!"
+fi
+
+echo "[job] Setting up temp directory..."
+# Redirect multiprocessing temp dir to local storage to avoid
+# "Device or resource busy" errors on Lustre during worker cleanup
+export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}
+mkdir -p "$TMPDIR" || { echo "[job] ERROR: Could not create TMPDIR=$TMPDIR"; }
+echo "[job] TMPDIR=$TMPDIR"
+
+echo "[job] Checking dataset directories..."
+for ds in FaceForensics++ UADFV Celeb-DF-v1 Celeb-DF-v2 DFDC DFDCP; do
+    if [ -d "./datasets/rgb/$ds" ]; then
+        echo "  [job]   Dataset found: ./datasets/rgb/$ds"
+    else
+        echo "  [job]   WARNING: Dataset NOT found: ./datasets/rgb/$ds"
+    fi
+done
+
+echo "[job] Checking weights file..."
+if [ -f "$WEIGHTS" ]; then
+    echo "  [job]   Weights file found: $WEIGHTS"
+else
+    echo "  [job]   WARNING: Weights file NOT found: $WEIGHTS"
+fi
+
+echo "[job] Checking detector config..."
+if [ -f "$DETECTOR_CONFIG" ]; then
+    echo "  [job]   Detector config found: $DETECTOR_CONFIG"
+else
+    echo "  [job]   WARNING: Detector config NOT found: $DETECTOR_CONFIG"
+fi
+
+echo "=============================================="
+echo "  [job] Running cross_dataset_test.py..."
+echo "  [job] Started at: $(date)"
+echo "=============================================="
+
+# Bash Strict Mode — only for the actual Python execution
+set -euo pipefail
+
+# Put testing scripts here
+
+python training/cross_dataset_test.py \
+    --detector_path $DETECTOR_CONFIG \
+    --weights_path $WEIGHTS
+
+echo "=============================================="
+echo "  [job] cross_dataset_test.py finished with exit code: $?"
+echo "  [job] Finished at: $(date)"
+echo "=============================================="
+
+echo "[job] Cleaning up local temp directory..."
+# Clean up local temp directory
+rm -rf "$TMPDIR"
+
+echo "[job] Testing job finished at $(date)."

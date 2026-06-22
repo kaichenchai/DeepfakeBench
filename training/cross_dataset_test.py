@@ -29,6 +29,7 @@ import sys
 import argparse
 import time
 import json
+import traceback
 import yaml
 import wandb
 from datetime import datetime
@@ -41,9 +42,13 @@ import torch.backends.cudnn as cudnn
 import torch.utils.data
 from tqdm import tqdm
 
+print("[cross_dataset_test] Script started. Importing modules...", flush=True)
+
 from dataset.abstract_dataset import DeepfakeAbstractBaseDataset
 from detectors import DETECTOR
 from metrics.utils import get_test_metrics
+
+print("[cross_dataset_test] All imports complete.", flush=True)
 
 # ── Default cross-dataset test suite ─────────────────────────────────────────
 CROSS_DATASETS = [
@@ -72,7 +77,7 @@ parser.add_argument(
     help="List of dataset names to evaluate (default: all 6 cross-dataset benchmarks)."
 )
 parser.add_argument(
-    "--output_dir", type=str, default="./results/cross_dataset/",
+    "--output_dir", type=str, default="./logs/cross_dataset_test/",
     help="Directory to save the results JSON and summary."
 )
 parser.add_argument(
@@ -99,6 +104,12 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
+print(f"[cross_dataset_test] Args parsed. detector_path={args.detector_path}", flush=True)
+print(f"[cross_dataset_test] weights_path={args.weights_path}", flush=True)
+print(f"[cross_dataset_test] datasets={args.datasets}", flush=True)
+print(f"[cross_dataset_test] output_dir={args.output_dir}", flush=True)
+print(f"[cross_dataset_test] no_wandb={args.no_wandb}", flush=True)
+
 # ── Device selection ─────────────────────────────────────────────────────────
 if args.device == "auto":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -124,22 +135,27 @@ def init_seed(config):
 
 def load_config(detector_path: str) -> dict:
     """Load the detector YAML configuration and merge with test_config."""
+    print(f"[cross_dataset_test] Loading detector config from: {detector_path}", flush=True)
     with open(detector_path, "r") as f:
         config = yaml.safe_load(f)
+    print(f"[cross_dataset_test] Detector config loaded. keys={list(config.keys())}", flush=True)
 
     test_config_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         "config", "test_config.yaml"
     )
+    print(f"[cross_dataset_test] Loading test config from: {test_config_path}", flush=True)
     with open(test_config_path, "r") as f:
         test_config = yaml.safe_load(f)
 
     config.update(test_config)
+    print(f"[cross_dataset_test] Configs merged. Final keys={list(config.keys())}", flush=True)
 
     # Carry over label_dict from test_config if present in original config
     if "label_dict" in config:
         test_config["label_dict"] = config["label_dict"]
 
+    print(f"[cross_dataset_test] Config loaded successfully. model_name={config.get('model_name', 'UNKNOWN')}", flush=True)
     return config
 
 
@@ -163,17 +179,21 @@ def prepare_test_loader(config: dict, dataset_name: str) -> torch.utils.data.Dat
 
 def load_model(config: dict, weights_path: str) -> nn.Module:
     """Instantiate the detector and load pretrained weights."""
+    print(f"[cross_dataset_test] Instantiating model: {config.get('model_name', 'UNKNOWN')}", flush=True)
     model_class = DETECTOR[config["model_name"]]
     model = model_class(config).to(device)
+    print(f"[cross_dataset_test] Model instantiated on {device}. Loading weights...", flush=True)
 
     ckpt = torch.load(weights_path, map_location=device)
+    print(f"[cross_dataset_test] Weights file loaded. ckpt keys count={len(ckpt)}", flush=True)
 
     # Strip 'module.' prefix if the checkpoint was saved from DDP
     if any(k.startswith("module.") for k in ckpt.keys()):
+        print("[cross_dataset_test] Stripping 'module.' prefix from checkpoint keys.", flush=True)
         ckpt = {k[7:]: v for k, v in ckpt.items()}
 
     model.load_state_dict(ckpt, strict=True)
-    print(f"Loaded weights from {weights_path}")
+    print(f"[cross_dataset_test] Weights loaded successfully from {weights_path}", flush=True)
     return model
 
 
@@ -189,11 +209,12 @@ def evaluate_one_dataset(
     dataset_name: str,
 ) -> dict:
     """Run inference over a full dataset and compute metrics."""
+    print(f"[cross_dataset_test] Starting evaluation on {dataset_name}. Num batches={len(loader)}", flush=True)
     model.eval()
 
     preds, labels, feats = [], [], []
 
-    for data_dict in tqdm(loader, desc=f"Testing {dataset_name}", leave=False):
+    for batch_idx, data_dict in enumerate(tqdm(loader, desc=f"Testing {dataset_name}", leave=False)):
         images = data_dict["image"].to(device)
         # Binarise labels: 0 vs 1
         target = torch.where(data_dict["label"] != 0, 1, 0).to(device)
@@ -211,14 +232,23 @@ def evaluate_one_dataset(
         labels.extend(target.cpu().numpy().tolist())
         feats.extend(output["feat"].cpu().numpy().tolist())
 
+        if batch_idx == 0:
+            print(f"[cross_dataset_test] First batch of {dataset_name}: "
+                  f"images.shape={images.shape}, prob.shape={output['prob'].shape}", flush=True)
+
+    print(f"[cross_dataset_test] Inference done for {dataset_name}. "
+          f"Total samples: preds={len(preds)}, labels={len(labels)}", flush=True)
+
     preds_np = np.array(preds)
     labels_np = np.array(labels)
 
+    print(f"[cross_dataset_test] Computing metrics for {dataset_name}...", flush=True)
     metrics = get_test_metrics(
         y_pred=preds_np,
         y_true=labels_np,
         img_names=loader.dataset.data_dict["image"],
     )
+    print(f"[cross_dataset_test] Metrics computed for {dataset_name}: {list(metrics.keys())}", flush=True)
     return metrics
 
 
@@ -231,9 +261,9 @@ def init_wandb(config: dict, weights_dir: str):
     if args.wandb_name:
         run_name = args.wandb_name
     elif config.get("run_name"):
-        run_name = config["run_name"] + "_cross_dataset"
+        run_name = "cross_dataset_test_" + config["run_name"]
     else:
-        run_name = config.get("model_name", "unknown") + "_cross_dataset"
+        run_name = "cross_dataset_test_" + config.get("model_name", "unknown")
 
     # Tags: CLI arg > default tags with model_name
     if args.wandb_tags:
@@ -274,19 +304,25 @@ def main():
     print("=" * 80)
 
     # 1. Load config
+    print("[cross_dataset_test] Step 1: Loading config...", flush=True)
     config = load_config(args.detector_path)
     config["cuda"] = (device.type == "cuda")
     config["cudnn"] = config["cuda"]
 
     init_seed(config)
     if config["cudnn"]:
-        cudnn.benchmark = True
+        cudnn.deterministic = True
+    print(f"[cross_dataset_test] Config ready. cuda={config['cuda']}, seed={config.get('manualSeed')}", flush=True)
 
     # 2. Init wandb (uploads config + metadata)
+    print("[cross_dataset_test] Step 2: Initializing wandb...", flush=True)
     init_wandb(config, weights_dir)
+    print("[cross_dataset_test] Wandb initialized.", flush=True)
 
     # 3. Build model + load weights
+    print("[cross_dataset_test] Step 3: Building model and loading weights...", flush=True)
     model = load_model(config, args.weights_path)
+    print("[cross_dataset_test] Model ready.", flush=True)
 
     # 4. Evaluate each dataset
     all_results = {}
@@ -308,8 +344,11 @@ def main():
 
         try:
             loader = prepare_test_loader(config, dataset_name)
+            print(f"[cross_dataset_test] DataLoader ready for {dataset_name}. "
+                  f"Dataset size={len(loader.dataset)}, batches={len(loader)}", flush=True)
         except Exception as e:
             print(f"  [SKIP] Could not load dataset '{dataset_name}': {e}")
+            traceback.print_exc()
             all_results[dataset_name] = {"error": str(e)}
             continue
 
@@ -335,6 +374,7 @@ def main():
                     print(f"    {k}: {v}")
         except Exception as e:
             print(f"  [FAIL] Error evaluating '{dataset_name}': {e}")
+            traceback.print_exc()
             all_results[dataset_name] = {"error": str(e)}
 
     total_time = time.time() - total_start
@@ -419,4 +459,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    print("[cross_dataset_test] Entering main()...", flush=True)
+    try:
+        main()
+        print("[cross_dataset_test] main() completed successfully.", flush=True)
+    except Exception as e:
+        print(f"[cross_dataset_test] FATAL ERROR in main(): {e}", flush=True)
+        traceback.print_exc()
+        sys.exit(1)

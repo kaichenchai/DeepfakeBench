@@ -1,3 +1,12 @@
+# Wandb experiment tracking
+wandb:
+  enabled: true
+  project: "deepfakebench"
+  entity: null  # Optional organization
+  mode: "online"  # online/offline/disabled
+  save_dir: "./logs/wandb/"
+  tags: []  # Optional tags for grouping experiments
+
 mode: test
 lmdb: false
 rgb_dir: './datasets/rgb'
