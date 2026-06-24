@@ -318,21 +318,33 @@ class Effort_Custom_Detector(AbstractDetector):
         ``missing_keys`` and ``unexpected_keys`` (same as
         ``nn.Module.load_state_dict``).
         """
+        # Always strip counterfactual_backbone keys — old checkpoints
+        # saved before the state_dict() override may still contain them.
+        filtered = {
+            k: v for k, v in state_dict.items()
+            if not k.startswith('counterfactual_backbone.')
+        }
+
         if hasattr(self, 'counterfactual_backbone') and self.counterfactual_backbone is not None:
-            # The saved checkpoint (produced by our state_dict() override)
-            # will NOT contain counterfactual_backbone keys.  Strip them
-            # from the incoming dict so we can still call super() with the
-            # caller's requested strictness, catching genuine mismatches.
-            filtered = {
-                k: v for k, v in state_dict.items()
-                if not k.startswith('counterfactual_backbone.')
-            }
-            result = super().load_state_dict(filtered, strict=strict)
+            # Counterfactual backbone is rebuilt from the (now updated)
+            # backbone, so its params are intentionally absent from the
+            # checkpoint.  Load with strict=False, then validate that
+            # *only* cf keys are missing (anything else is a real problem).
+            result = super().load_state_dict(filtered, strict=False)
+            real_missing = [k for k in result.missing_keys
+                            if not k.startswith('counterfactual_backbone.')]
+            if real_missing:
+                logger.error(
+                    'Unexpected missing keys in state_dict: %s', real_missing
+                )
+                raise RuntimeError(
+                    f'Missing key(s) in state_dict: {real_missing}'
+                )
             # Re-sync the counterfactual backbone from the loaded backbone.
             self.counterfactual_backbone = self.build_counterfactual_backbone(self.backbone)
             return result
         else:
-            return super().load_state_dict(state_dict, strict=strict)
+            return super().load_state_dict(filtered, strict=strict)
 
 
 # Custom module to represent the residual using SVD components
