@@ -1,5 +1,5 @@
 #!/bin/bash
-#rj name=effort_hsic_orthogonal_weight_cf_bb
+#rj name=effort_model_training_ddp
 #rj runtime=3
 #rj logdir=logs/slurm
 #rj priority=550
