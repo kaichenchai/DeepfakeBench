@@ -16,12 +16,12 @@ source .venv/bin/activate
 export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}
 mkdir -p "$TMPDIR"
 
-# torchrun --nproc_per_node=2 \
-#     training/train.py \
-#     --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone.yaml \
-#     --train_dataset "FaceForensics++" \
-#     --test_dataset "FaceForensics++" \
-#     --ddp
+torchrun --nproc_per_node=2 \
+    training/train.py \
+    --detector_path ./training/config/detector/effort.yaml \
+    --train_dataset "FaceForensics++" \
+    --test_dataset "FaceForensics++" \
+    --ddp
 
 # torchrun --nproc_per_node=2 \
 #     training/train.py \
