@@ -6,8 +6,27 @@
 #rj features=a100
 
 
-WEIGHTS="./logs/training/effort_ce_effort_custom_2026-06-11-14-17-47/final/ckpt_final.pth"
-DETECTOR_CONFIG="./training/config/detector/effort_ce_hsic.yaml"
+# ══════════════════════════════════════════════════════════════════════════════
+# CONFIG / WEIGHT PAIRS — runs sequentially
+# Add/remove entries here to change what gets evaluated.
+# Each entry: "CONFIG|WEIGHTS_DIR"
+# ══════════════════════════════════════════════════════════════════════════════
+CFG_DIR="./training/config/detector"
+TRAINING_DIR="./logs/training"
+
+PAIRS=(
+    #"effort_ce.yaml|effort_ce_effort_custom_2026-06-11-14-17-47"
+    "effort_ce_hsic.yaml|effort_ce_hsic_effort_custom_2026-06-11-15-33-08"
+    #"effort_ce_hsic.yaml|effort_ce_hsic_cka_effort_custom_2026-06-16-16-21-47"
+    "effort_ce_orthogonal.yaml|effort_ce_orthogonal_effort_custom_2026-06-11-22-33-34"
+    "effort_ce_hsic_orthogonal_weight.yaml|effort_ce_hsic_orthogonal_weight_effort_custom_2026-06-12-00-14-54"
+    "effort_ce_weight.yaml|effort_ce_weight_effort_custom_2026-06-12-01-45-21"
+    "effort_ce_hsic_weight.yaml|effort_ce_hsic_weight_effort_custom_2026-06-12-03-13-27"
+    "effort_ce_masked_counterfactual_backbone.yaml|effort_ce_masked_counterfactual_backbone_effort_custom_2026-06-17-12-01-10"
+    "effort_ce_hsic_masked_counterfactual_backbone.yaml|effort_ce_hsic_masked_counterfactual_backbone_effort_custom_2026-06-17-12-37-59"
+    "effort_ce_hsic_orthogonal_masked_counterfactual_backbone.yaml|effort_ce_hsic_orthogonal_masked_counterfactual_backbone_effort_custom_2026-06-17-12-38-29"
+    "effort_ce_hsic_orthogonal_weight_masked_counterfactual_backbone.yaml|effort_ce_hsic_orthogonal_weight_masked_counterfactual_backbone_effort_custom_2026-06-17-12-38-41"
+)
 
 
 echo "=============================================="
@@ -15,6 +34,7 @@ echo "  [job] Job started at $(date)"
 echo "  [job] SLURM_JOB_ID=${SLURM_JOB_ID:-N/A}"
 echo "  [job] Hostname: $(hostname)"
 echo "  [job] Working dir: $(pwd)"
+echo "  [job] Total pairs to run: ${#PAIRS[@]}"
 echo "=============================================="
 
 echo "[job] Activating virtual environment..."
@@ -50,41 +70,53 @@ for ds in FaceForensics++ UADFV Celeb-DF-v1 Celeb-DF-v2 DFDC DFDCP; do
     fi
 done
 
-echo "[job] Checking weights file..."
-if [ -f "$WEIGHTS" ]; then
-    echo "  [job]   Weights file found: $WEIGHTS"
-else
-    echo "  [job]   WARNING: Weights file NOT found: $WEIGHTS"
-fi
-
-echo "[job] Checking detector config..."
-if [ -f "$DETECTOR_CONFIG" ]; then
-    echo "  [job]   Detector config found: $DETECTOR_CONFIG"
-else
-    echo "  [job]   WARNING: Detector config NOT found: $DETECTOR_CONFIG"
-fi
-
 echo "=============================================="
-echo "  [job] Running cross_dataset_test.py..."
-echo "  [job] Started at: $(date)"
+echo "  [job] Starting sequential pair evaluations..."
 echo "=============================================="
 
-# Bash Strict Mode — only for the actual Python execution
 set -euo pipefail
 
-# Put testing scripts here
+TOTAL=${#PAIRS[@]}
+PASSED=0
+FAILED=0
 
-python training/cross_dataset_test.py \
-    --detector_path $DETECTOR_CONFIG \
-    --weights_path $WEIGHTS
+for i in "${!PAIRS[@]}"; do
+    IFS='|' read -r CONFIG_NAME WEIGHTS_DIR_NAME <<< "${PAIRS[$i]}"
+    DETECTOR_CONFIG="${CFG_DIR}/${CONFIG_NAME}"
+    WEIGHTS="${TRAINING_DIR}/${WEIGHTS_DIR_NAME}/final/ckpt_final.pth"
 
+    echo ""
+    echo "=============================================="
+    echo "  [$((i+1))/${TOTAL}] Config:  $CONFIG_NAME"
+    echo "  [$((i+1))/${TOTAL}] Weights: $WEIGHTS_DIR_NAME"
+    echo "  [$((i+1))/${TOTAL}] Started at: $(date)"
+    echo "=============================================="
+
+    if [ ! -f "$DETECTOR_CONFIG" ]; then
+        echo "  [ERROR] Config not found: $DETECTOR_CONFIG  — SKIPPING"
+        FAILED=$((FAILED + 1))
+        continue
+    fi
+    if [ ! -f "$WEIGHTS" ]; then
+        echo "  [ERROR] Weights not found: $WEIGHTS  — SKIPPING"
+        FAILED=$((FAILED + 1))
+        continue
+    fi
+
+    python training/cross_dataset_test.py \
+        --detector_path "$DETECTOR_CONFIG" \
+        --weights_path "$WEIGHTS" \
+    && { echo "  [$((i+1))/${TOTAL}] PASSED at $(date)"; PASSED=$((PASSED + 1)); } \
+    || { echo "  [$((i+1))/${TOTAL}] FAILED at $(date)"; FAILED=$((FAILED + 1)); }
+done
+
+echo ""
 echo "=============================================="
-echo "  [job] cross_dataset_test.py finished with exit code: $?"
+echo "  [job] ALL DONE — Passed: $PASSED / $TOTAL, Failed: $FAILED"
 echo "  [job] Finished at: $(date)"
 echo "=============================================="
 
 echo "[job] Cleaning up local temp directory..."
-# Clean up local temp directory
 rm -rf "$TMPDIR"
 
 echo "[job] Testing job finished at $(date)."
