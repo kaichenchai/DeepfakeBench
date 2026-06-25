@@ -1,0 +1,117 @@
+#!/bin/bash
+#rj name=effort_cross_dataset_test_best
+#rj runtime=3
+#rj logdir=logs/slurm/cross_dataset_test_best
+#rj priority=550
+#rj features=a100
+#rj array=0-10
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CONFIG / WEIGHT PAIRS — each pair runs as a separate array task in PARALLEL
+# Uses test/avg/ckpt_best.pth instead of final/ckpt_final.pth
+# Index 0..10 maps to SLURM_ARRAY_TASK_ID
+# ══════════════════════════════════════════════════════════════════════════════
+CFG_DIR="./training/config/detector"
+TRAINING_DIR="./logs/training"
+
+PAIRS=(
+    "effort_ce.yaml|effort_ce_effort_custom_2026-06-11-14-17-47"
+    "effort_ce_hsic.yaml|effort_ce_hsic_effort_custom_2026-06-11-15-33-08"
+    "effort_ce_orthogonal.yaml|effort_ce_orthogonal_effort_custom_2026-06-11-22-33-34"
+    "effort_ce_hsic_orthogonal_weight.yaml|effort_ce_hsic_orthogonal_weight_effort_custom_2026-06-12-00-14-54"
+    "effort_ce_weight.yaml|effort_ce_weight_effort_custom_2026-06-12-01-45-21"
+    "effort_ce_hsic_weight.yaml|effort_ce_hsic_weight_effort_custom_2026-06-12-03-13-27"
+    "effort_ce_masked_counterfactual_backbone.yaml|effort_ce_masked_counterfactual_backbone_effort_custom_2026-06-17-12-01-10"
+    "effort_ce_hsic_masked_counterfactual_backbone.yaml|effort_ce_hsic_masked_counterfactual_backbone_effort_custom_2026-06-17-12-37-59"
+    "effort_ce_hsic_orthogonal_masked_counterfactual_backbone.yaml|effort_ce_hsic_orthogonal_masked_counterfactual_backbone_effort_custom_2026-06-17-12-38-29"
+    "effort_ce_hsic_orthogonal_weight_masked_counterfactual_backbone.yaml|effort_ce_hsic_orthogonal_weight_masked_counterfactual_backbone_effort_custom_2026-06-17-12-38-41"
+    "effort.yaml|effort_2026-06-24-19-02-08"
+)
+
+TASK_ID=${SLURM_ARRAY_TASK_ID:-0}
+TOTAL=${#PAIRS[@]}
+
+if [ "$TASK_ID" -ge "$TOTAL" ]; then
+    echo "[job] SLURM_ARRAY_TASK_ID=$TASK_ID out of range (max $((TOTAL-1))) — exiting"
+    exit 0
+fi
+
+IFS='|' read -r CONFIG_NAME WEIGHTS_DIR_NAME <<< "${PAIRS[$TASK_ID]}"
+DETECTOR_CONFIG="${CFG_DIR}/${CONFIG_NAME}"
+WEIGHTS="${TRAINING_DIR}/${WEIGHTS_DIR_NAME}/test/avg/ckpt_best.pth"
+
+echo "=============================================="
+echo "  [job] Job started at $(date)"
+echo "  [job] SLURM_JOB_ID=${SLURM_JOB_ID:-N/A}"
+echo "  [job] SLURM_ARRAY_TASK_ID=$TASK_ID / $((TOTAL-1))"
+echo "  [job] Hostname: $(hostname)"
+echo "  [job] Working dir: $(pwd)"
+echo "  [job] Total pairs: $TOTAL"
+echo "=============================================="
+
+echo "[job] Activating virtual environment..."
+# Activate virtual environment managed by uv
+if [ -f .venv/bin/activate ]; then
+    source .venv/bin/activate
+    echo "[job] Virtual environment activated."
+else
+    echo "[job] ERROR: .venv/bin/activate not found! Searching for python..."
+fi
+
+PYTHON_BIN="$(command -v python3 || command -v python || echo 'NOT_FOUND')"
+echo "[job] Python binary: ${PYTHON_BIN}"
+if [ "${PYTHON_BIN}" != "NOT_FOUND" ]; then
+    ${PYTHON_BIN} --version 2>&1 || true
+else
+    echo "[job] ERROR: No Python found!"
+fi
+
+echo "[job] Setting up temp directory..."
+# Redirect multiprocessing temp dir to local storage to avoid
+# "Device or resource busy" errors on Lustre during worker cleanup
+export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}
+mkdir -p "$TMPDIR" || { echo "[job] ERROR: Could not create TMPDIR=$TMPDIR"; }
+echo "[job] TMPDIR=$TMPDIR"
+
+echo "[job] Checking dataset directories..."
+for ds in FaceForensics++ UADFV Celeb-DF-v1 Celeb-DF-v2 DFDC DFDCP; do
+    if [ -d "./datasets/rgb/$ds" ]; then
+        echo "  [job]   Dataset found: ./datasets/rgb/$ds"
+    else
+        echo "  [job]   WARNING: Dataset NOT found: ./datasets/rgb/$ds"
+    fi
+done
+
+echo "=============================================="
+echo "  [job] Array Task $TASK_ID:"
+echo "  [job]   Config:  $CONFIG_NAME"
+echo "  [job]   Weights: $WEIGHTS_DIR_NAME/test/avg/ckpt_best.pth"
+echo "  [job] Started at: $(date)"
+echo "=============================================="
+
+set -euo pipefail
+
+if [ ! -f "$DETECTOR_CONFIG" ]; then
+    echo "  [ERROR] Config not found: $DETECTOR_CONFIG  — EXITING"
+    exit 1
+fi
+if [ ! -f "$WEIGHTS" ]; then
+    echo "  [ERROR] Weights not found: $WEIGHTS  — EXITING"
+    exit 1
+fi
+
+python training/cross_dataset_test.py \
+    --detector_path "$DETECTOR_CONFIG" \
+    --weights_path "$WEIGHTS" \
+    --checkpoint_type best
+
+echo ""
+echo "=============================================="
+echo "  [job] Array Task $TASK_ID PASSED at $(date)"
+echo "=============================================="
+
+echo "[job] Cleaning up local temp directory..."
+rm -rf "$TMPDIR"
+
+echo "[job] Testing job finished at $(date)."

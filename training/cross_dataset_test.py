@@ -21,6 +21,7 @@ Usage:
         [--wandb_project deepfakebench] \
         [--wandb_name my_cross_test] \
         [--wandb_tags cross_dataset effort_ce] \
+        [--checkpoint_type best|final] \
         [--no_wandb]
 """
 
@@ -97,6 +98,11 @@ parser.add_argument(
 parser.add_argument(
     "--wandb_tags", type=str, nargs="+", default=None,
     help="Tags for wandb run (default: ['cross_dataset', config['model_name']])."
+)
+parser.add_argument(
+    "--checkpoint_type", type=str, choices=["best", "final"], default="final",
+    help="Checkpoint type being tested: 'best' (test/avg/ckpt_best.pth) or 'final' (final/ckpt_final.pth). "
+         "Prepended to the wandb run name. Default: 'final'."
 )
 parser.add_argument(
     "--no_wandb", action="store_true", default=False,
@@ -257,13 +263,14 @@ def init_wandb(config: dict, weights_dir: str):
     """Initialise wandb run with config, tags, and metadata."""
     project = args.wandb_project or config.get("wandb", {}).get("project", "deepfakebench")
 
-    # Determine run name: CLI arg > config run_name > model_name + timestamp
+    # Determine run name: prepend checkpoint_type, then CLI arg > config run_name > model_name + timestamp
+    ckpt_prefix = f"{args.checkpoint_type}_"
     if args.wandb_name:
-        run_name = args.wandb_name
+        run_name = ckpt_prefix + args.wandb_name
     elif config.get("run_name"):
-        run_name = "cross_dataset_test_" + config["run_name"]
+        run_name = ckpt_prefix + "cross_dataset_test_" + config["run_name"]
     else:
-        run_name = "cross_dataset_test_" + config.get("model_name", "unknown")
+        run_name = ckpt_prefix + "cross_dataset_test_" + config.get("model_name", "unknown")
 
     # Tags: CLI arg > default tags with model_name
     if args.wandb_tags:

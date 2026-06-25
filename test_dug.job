@@ -17,7 +17,6 @@ TRAINING_DIR="./logs/training"
 PAIRS=(
     #"effort_ce.yaml|effort_ce_effort_custom_2026-06-11-14-17-47"
     #"effort_ce_hsic.yaml|effort_ce_hsic_effort_custom_2026-06-11-15-33-08"
-    #"effort_ce_hsic.yaml|effort_ce_hsic_cka_effort_custom_2026-06-16-16-21-47"
     #"effort_ce_orthogonal.yaml|effort_ce_orthogonal_effort_custom_2026-06-11-22-33-34"
     # "effort_ce_hsic_orthogonal_weight.yaml|effort_ce_hsic_orthogonal_weight_effort_custom_2026-06-12-00-14-54"
     # "effort_ce_weight.yaml|effort_ce_weight_effort_custom_2026-06-12-01-45-21"
