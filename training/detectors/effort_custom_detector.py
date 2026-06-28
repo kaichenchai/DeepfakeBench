@@ -42,6 +42,13 @@ class Effort_Custom_Detector(AbstractDetector):
         self.correct, self.total = 0, 0
         self.mse_loss_func = nn.MSELoss()
 
+        # Step counter for periodic per-layer residual logging (file logger only)
+        self._train_step_counter = 0
+
+        # Register gradient hooks on residual parameters so we can monitor
+        # whether gradients are flowing through S_residual, U_residual, V_residual.
+        self._register_residual_param_hooks()
+
     def build_backbone(self, config):
         # Download model
         # https://huggingface.co/openai/clip-vit-large-patch14
@@ -222,6 +229,21 @@ class Effort_Custom_Detector(AbstractDetector):
             'masked_counterfactual_backbone_loss': torch.tensor(0.0, device=pred.device).detach(),
         }
         
+        # ---- Residual health monitoring (training only) ----
+        residual_stats = {}
+        grad_stats = {}
+        if self.training:
+            self._train_step_counter += 1
+
+            # Aggregate stats for wandb (lightweight, goes into loss dict)
+            residual_stats = self._get_residual_stats()
+            grad_stats = self._get_gradient_stats()
+
+            # Per-layer detailed logging to file logger every N steps
+            per_layer_log_interval = 50  # log per-layer breakdown every 50 training steps
+            if self._train_step_counter % per_layer_log_interval == 0:
+                self._log_per_layer_residual()
+
         # Only compute all of these other losses when training
         if self.training:
             for loss_name in self.config["loss_functions"]["selected"]:
@@ -262,6 +284,8 @@ class Effort_Custom_Detector(AbstractDetector):
             'fake_loss': loss_fake.detach(),
             'cross_entropy_loss': cross_entropy_loss.detach(),
             **dynamic_losses,
+            **residual_stats,
+            **grad_stats,
         }
                 
         return loss_dict
@@ -285,6 +309,109 @@ class Effort_Custom_Detector(AbstractDetector):
         pred_dict = {'cls': pred, 'prob': prob, 'feat': features}
 
         return pred_dict
+
+    # ------------------------------------------------------------------
+    # Residual health monitoring helpers (detector-level)
+    # ------------------------------------------------------------------
+    def _register_residual_param_hooks(self):
+        """Iterate over backbone and register gradient hooks on every
+        SVDResidualLinear module."""
+        for module in self.backbone.modules():
+            if isinstance(module, SVDResidualLinear):
+                module.register_residual_param_hooks()
+
+    def _get_residual_stats(self) -> dict:
+        """Aggregate residual health metrics across all SVDResidualLinear layers.
+
+        Returns a flat dict of scalar stats suitable for wandb logging.
+        """
+        s_means = []
+        s_stds = []
+        total_residual_norm_sq = 0.0
+        total_main_norm_sq = 0.0
+        ratios = []
+        layer_count = 0
+
+        for module in self.backbone.modules():
+            if isinstance(module, SVDResidualLinear):
+                layer_count += 1
+                stats = module.compute_residual_stats()
+                s_means.append(stats['S_mean'])
+                s_stds.append(stats['S_std'])
+                total_residual_norm_sq += stats['residual_fro_norm'] ** 2
+                total_main_norm_sq += stats['main_fro_norm'] ** 2
+                if stats['main_fro_norm'] > 0:
+                    ratios.append(stats['residual_fro_norm'] / stats['main_fro_norm'])
+
+        agg = {}
+        if layer_count > 0:
+            agg['residual_S_mean_global'] = float(np.mean(s_means)) if s_means else 0.0
+            agg['residual_S_std_global'] = float(np.mean(s_stds)) if s_stds else 0.0
+            agg['residual_aggregate_norm'] = total_residual_norm_sq ** 0.5
+            agg['main_aggregate_norm'] = total_main_norm_sq ** 0.5
+            agg['residual_main_ratio'] = float(np.mean(ratios)) if ratios else 0.0
+            agg['residual_layer_count'] = layer_count
+        else:
+            agg['residual_S_mean_global'] = 0.0
+            agg['residual_S_std_global'] = 0.0
+            agg['residual_aggregate_norm'] = 0.0
+            agg['main_aggregate_norm'] = 0.0
+            agg['residual_main_ratio'] = 0.0
+            agg['residual_layer_count'] = 0
+
+        return agg
+
+    def _get_gradient_stats(self) -> dict:
+        """Aggregate gradient norms across all SVDResidualLinear layers.
+
+        These values come from the *previous* backward pass (hooks fire
+        during backward and cache the norms).
+        """
+        grad_S = []
+        grad_U = []
+        grad_V = []
+
+        for module in self.backbone.modules():
+            if isinstance(module, SVDResidualLinear):
+                norms = module.compute_gradient_norms()
+                grad_S.append(norms['S_residual'])
+                grad_U.append(norms['U_residual'])
+                grad_V.append(norms['V_residual'])
+
+        agg = {}
+        if grad_S:
+            agg['grad_S_residual_mean'] = float(np.mean(grad_S))
+            agg['grad_U_residual_mean'] = float(np.mean(grad_U))
+            agg['grad_V_residual_mean'] = float(np.mean(grad_V))
+        else:
+            agg['grad_S_residual_mean'] = 0.0
+            agg['grad_U_residual_mean'] = 0.0
+            agg['grad_V_residual_mean'] = 0.0
+
+        return agg
+
+    def _log_per_layer_residual(self):
+        """Log detailed per-layer residual stats to the file logger.
+
+        Called periodically (every few training steps) so the full
+        per-layer breakdown is preserved in the log file without
+        spamming wandb.
+        """
+        logger.info("=== Per-layer residual health (step %d) ===", self._train_step_counter)
+        for name, module in self.backbone.named_modules():
+            if isinstance(module, SVDResidualLinear):
+                stats = module.compute_residual_stats()
+                grad_norms = module.compute_gradient_norms()
+                ratio = stats['residual_fro_norm'] / (stats['main_fro_norm'] + 1e-8)
+                logger.info(
+                    "  %s | S: mean=%.6f std=%.6f max=%.6f min=%.6f | "
+                    "resid_norm=%.4f main_norm=%.4f ratio=%.6f | "
+                    "grad_S=%.6f grad_U=%.6f grad_V=%.6f",
+                    name, stats['S_mean'], stats['S_std'], stats['S_max'], stats['S_min'],
+                    stats['residual_fro_norm'], stats['main_fro_norm'], ratio,
+                    grad_norms['S_residual'], grad_norms['U_residual'], grad_norms['V_residual'],
+                )
+        logger.info("=== End per-layer residual health ===")
 
     # ------------------------------------------------------------------
     # Serialisation helpers
@@ -373,6 +500,10 @@ class SVDResidualLinear(nn.Module):
         self.hsic_loss_func = HSICLoss()
         self.cached_main_features = None
         self.cached_residual_features = None
+
+        # For residual health monitoring (gradient norms cached via param hooks)
+        self._cached_grad_norms = {'S_residual': 0.0, 'U_residual': 0.0, 'V_residual': 0.0}
+        self._hooks_registered = False
 
         # Bias
         if bias:
@@ -467,7 +598,59 @@ class SVDResidualLinear(nn.Module):
         loss = self.hsic_loss_func(main_feat, residual_feat)
 
         return loss
-        
+
+    # ------------------------------------------------------------------
+    # Residual health monitoring helpers
+    # ------------------------------------------------------------------
+    def register_residual_param_hooks(self):
+        """Register gradient hooks on S_residual, U_residual, V_residual.
+
+        Must be called AFTER replace_with_svd_residual() has set the real
+        tensor parameters (i.e. after build_backbone completes).
+        """
+        if self._hooks_registered:
+            return
+        self._cached_grad_norms = {'S_residual': 0.0, 'U_residual': 0.0, 'V_residual': 0.0}
+        for param_name in ['S_residual', 'U_residual', 'V_residual']:
+            param = getattr(self, param_name, None)
+            if param is not None and param.requires_grad:
+                # Default-argument captures param_name at definition time
+                def _hook(grad, name=param_name):
+                    if grad is not None:
+                        self._cached_grad_norms[name] = grad.norm().item()
+                    return grad
+                param.register_hook(_hook)
+        self._hooks_registered = True
+
+    def compute_residual_stats(self):
+        """Return per-layer residual health metrics as a dict of scalars."""
+        stats = {}
+        if self.S_residual is not None and self.S_residual.numel() > 0:
+            S_abs = self.S_residual.abs().detach()
+            stats['S_mean'] = S_abs.mean().item()
+            stats['S_std'] = S_abs.std().item()
+            stats['S_max'] = S_abs.max().item()
+            stats['S_min'] = S_abs.min().item()
+            stats['num_S'] = S_abs.numel()
+
+            # Frobenius norm of the full residual weight matrix
+            residual_weight = self.U_residual @ torch.diag(self.S_residual) @ self.V_residual
+            stats['residual_fro_norm'] = torch.norm(residual_weight, p='fro').detach().item()
+        else:
+            stats['S_mean'] = 0.0
+            stats['S_std'] = 0.0
+            stats['S_max'] = 0.0
+            stats['S_min'] = 0.0
+            stats['num_S'] = 0
+            stats['residual_fro_norm'] = 0.0
+
+        stats['main_fro_norm'] = torch.norm(self.weight_main, p='fro').detach().item()
+        return stats
+
+    def compute_gradient_norms(self):
+        """Return cached gradient norms from the most recent backward pass."""
+        return dict(self._cached_grad_norms)
+
 
 # Function to replace nn.Linear modules within self_attn modules with SVDResidualLinear
 def apply_svd_residual_to_self_attn(model, r):
