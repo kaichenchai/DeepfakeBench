@@ -55,7 +55,7 @@ class Effort_Custom_Detector(AbstractDetector):
         # Apply SVD to self_attn layers only
         # ViT-L/14 224*224: 1024-1
         # TODO test different levels of residual rank
-        clip_model.vision_model = apply_svd_residual_to_self_attn(clip_model.vision_model, r=1024-16)
+        clip_model.vision_model = apply_svd_residual_to_self_attn(clip_model.vision_model, r=1024-1)
 
         for name, param in clip_model.vision_model.named_parameters():
             print('{}: {}'.format(name, param.requires_grad))
