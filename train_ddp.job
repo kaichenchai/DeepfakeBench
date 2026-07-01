@@ -1,7 +1,7 @@
 #!/bin/bash
 #rj name=effort_model_training_ddp
 #rj queue=curtin_eecms
-#rj runtime=3
+#rj runtime=10
 #rj logdir=logs/slurm
 #rj priority=550
 #rj features=a100
