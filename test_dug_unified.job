@@ -5,43 +5,30 @@
 #rj logdir=logs/slurm/cross_dataset_test
 #rj priority=550
 #rj features=a100
-#rj array=0-2
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CONFIG / WEIGHT PAIRS — each pair runs as a separate array task in PARALLEL.
-# Each task benchmarks BOTH final/ckpt_final.pth AND test/avg/ckpt_best.pth
-# sequentially within the task.
-#
-# Index 0..N maps to SLURM_ARRAY_TASK_ID
+# CONFIG / WEIGHT PAIRS — runs sequentially.
+# Each pair benchmarks BOTH final/ckpt_final.pth AND test/avg/ckpt_best.pth.
+# Add/remove entries here to change what gets evaluated.
+# Each entry: "CONFIG|WEIGHTS_DIR"
 # ══════════════════════════════════════════════════════════════════════════════
 CFG_DIR="./training/config/detector"
 TRAINING_DIR="./logs/training"
 
 PAIRS=(
-    "effort_ce_hsic.yaml|effort_ce_hsic_4_effort_custom_2026-07-02-00-19-58"
-    "effort_ce_hsic.yaml|effort_ce_hsic_8_effort_custom_2026-07-02-02-35-09"
-    "effort_ce_hsic.yaml|effort_ce_hsic_32_effort_custom_2026-07-02-04-50-04"
+    "effort_ce_hsic_4.yaml|effort_ce_hsic_4_effort_custom_2026-07-02-00-19-58"
+    "effort_ce_hsic_8.yaml|effort_ce_hsic_8_effort_custom_2026-07-02-02-35-09"
+    "effort_ce_hsic_32.yaml|effort_ce_hsic_32_effort_custom_2026-07-02-04-50-04"
 )
 
-TASK_ID=${SLURM_ARRAY_TASK_ID:-0}
-TOTAL=${#PAIRS[@]}
-
-if [ "$TASK_ID" -ge "$TOTAL" ]; then
-    echo "[job] SLURM_ARRAY_TASK_ID=$TASK_ID out of range (max $((TOTAL-1))) — exiting"
-    exit 0
-fi
-
-IFS='|' read -r CONFIG_NAME WEIGHTS_DIR_NAME <<< "${PAIRS[$TASK_ID]}"
-DETECTOR_CONFIG="${CFG_DIR}/${CONFIG_NAME}"
 
 echo "=============================================="
 echo "  [job] Job started at $(date)"
 echo "  [job] SLURM_JOB_ID=${SLURM_JOB_ID:-N/A}"
-echo "  [job] SLURM_ARRAY_TASK_ID=$TASK_ID / $((TOTAL-1))"
 echo "  [job] Hostname: $(hostname)"
 echo "  [job] Working dir: $(pwd)"
-echo "  [job] Total pairs: $TOTAL"
+echo "  [job] Total pairs to run: ${#PAIRS[@]}"
 echo "=============================================="
 
 echo "[job] Activating virtual environment..."
@@ -61,7 +48,7 @@ else
 fi
 
 echo "[job] Setting up temp directory..."
-export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}
+export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}
 mkdir -p "$TMPDIR" || { echo "[job] ERROR: Could not create TMPDIR=$TMPDIR"; }
 echo "[job] TMPDIR=$TMPDIR"
 
@@ -75,67 +62,88 @@ for ds in FaceForensics++ UADFV Celeb-DF-v1 Celeb-DF-v2 DFDC DFDCP; do
 done
 
 echo "=============================================="
-echo "  [job] Array Task $TASK_ID:"
-echo "  [job]   Config:  $CONFIG_NAME"
-echo "  [job]   Weights: $WEIGHTS_DIR_NAME"
-echo "  [job]   Benchmarking: final + best"
-echo "  [job] Started at: $(date)"
+echo "  [job] Starting sequential pair evaluations..."
 echo "=============================================="
 
 set -euo pipefail
 
-if [ ! -f "$DETECTOR_CONFIG" ]; then
-    echo "  [ERROR] Config not found: $DETECTOR_CONFIG  — EXITING"
-    exit 1
-fi
+TOTAL=${#PAIRS[@]}
+PASSED=0
+FAILED=0
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 1) Benchmark FINAL checkpoint
-# ─────────────────────────────────────────────────────────────────────────────
-WEIGHTS_FINAL="${TRAINING_DIR}/${WEIGHTS_DIR_NAME}/final/ckpt_final.pth"
+for i in "${!PAIRS[@]}"; do
+    IFS='|' read -r CONFIG_NAME WEIGHTS_DIR_NAME <<< "${PAIRS[$i]}"
+    DETECTOR_CONFIG="${CFG_DIR}/${CONFIG_NAME}"
+    WEIGHTS_FINAL="${TRAINING_DIR}/${WEIGHTS_DIR_NAME}/final/ckpt_final.pth"
+    WEIGHTS_BEST="${TRAINING_DIR}/${WEIGHTS_DIR_NAME}/test/avg/ckpt_best.pth"
 
-echo ""
-echo "──────────────────────────────────────────────"
-echo "  [final] Testing: $WEIGHTS_DIR_NAME/final/ckpt_final.pth"
-echo "  [final] Started at: $(date)"
-echo "──────────────────────────────────────────────"
+    echo ""
+    echo "=============================================="
+    echo "  [$((i+1))/${TOTAL}] Config:  $CONFIG_NAME"
+    echo "  [$((i+1))/${TOTAL}] Weights: $WEIGHTS_DIR_NAME"
+    echo "  [$((i+1))/${TOTAL}] Benchmarking: final + best"
+    echo "  [$((i+1))/${TOTAL}] Started at: $(date)"
+    echo "=============================================="
 
-if [ ! -f "$WEIGHTS_FINAL" ]; then
-    echo "  [WARNING] Final weights not found: $WEIGHTS_FINAL  — SKIPPING"
-else
-    python training/cross_dataset_test.py \
-        --detector_path "$DETECTOR_CONFIG" \
-        --weights_path "$WEIGHTS_FINAL" \
-        --checkpoint_type final
+    PAIR_OK=true
 
-    echo "  [final] PASSED at $(date)"
-fi
+    if [ ! -f "$DETECTOR_CONFIG" ]; then
+        echo "  [ERROR] Config not found: $DETECTOR_CONFIG  — SKIPPING"
+        FAILED=$((FAILED + 1))
+        continue
+    fi
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 2) Benchmark BEST checkpoint
-# ─────────────────────────────────────────────────────────────────────────────
-WEIGHTS_BEST="${TRAINING_DIR}/${WEIGHTS_DIR_NAME}/test/avg/ckpt_best.pth"
+    # ── FINAL checkpoint ────────────────────────────────────────────────
 
-echo ""
-echo "──────────────────────────────────────────────"
-echo "  [best]  Testing: $WEIGHTS_DIR_NAME/test/avg/ckpt_best.pth"
-echo "  [best]  Started at: $(date)"
-echo "──────────────────────────────────────────────"
+    echo ""
+    echo "──────────────────────────────────────────────"
+    echo "  [final] Testing: $WEIGHTS_DIR_NAME/final/ckpt_final.pth"
+    echo "  [final] Started at: $(date)"
+    echo "──────────────────────────────────────────────"
 
-if [ ! -f "$WEIGHTS_BEST" ]; then
-    echo "  [WARNING] Best weights not found: $WEIGHTS_BEST  — SKIPPING"
-else
-    python training/cross_dataset_test.py \
-        --detector_path "$DETECTOR_CONFIG" \
-        --weights_path "$WEIGHTS_BEST" \
-        --checkpoint_type best
+    if [ ! -f "$WEIGHTS_FINAL" ]; then
+        echo "  [WARNING] Final weights not found: $WEIGHTS_FINAL  — SKIPPING"
+    else
+        python training/cross_dataset_test.py \
+            --detector_path "$DETECTOR_CONFIG" \
+            --weights_path "$WEIGHTS_FINAL" \
+            --checkpoint_type final \
+        && { echo "  [final] PASSED at $(date)"; } \
+        || { echo "  [final] FAILED at $(date)"; PAIR_OK=false; }
+    fi
 
-    echo "  [best]  PASSED at $(date)"
-fi
+    # ── BEST checkpoint ─────────────────────────────────────────────────
+
+    echo ""
+    echo "──────────────────────────────────────────────"
+    echo "  [best]  Testing: $WEIGHTS_DIR_NAME/test/avg/ckpt_best.pth"
+    echo "  [best]  Started at: $(date)"
+    echo "──────────────────────────────────────────────"
+
+    if [ ! -f "$WEIGHTS_BEST" ]; then
+        echo "  [WARNING] Best weights not found: $WEIGHTS_BEST  — SKIPPING"
+    else
+        python training/cross_dataset_test.py \
+            --detector_path "$DETECTOR_CONFIG" \
+            --weights_path "$WEIGHTS_BEST" \
+            --checkpoint_type best \
+        && { echo "  [best]  PASSED at $(date)"; } \
+        || { echo "  [best]  FAILED at $(date)"; PAIR_OK=false; }
+    fi
+
+    if $PAIR_OK; then
+        echo "  [$((i+1))/${TOTAL}] PAIR PASSED at $(date)"
+        PASSED=$((PASSED + 1))
+    else
+        echo "  [$((i+1))/${TOTAL}] PAIR FAILED at $(date)"
+        FAILED=$((FAILED + 1))
+    fi
+done
 
 echo ""
 echo "=============================================="
-echo "  [job] Array Task $TASK_ID DONE at $(date)"
+echo "  [job] ALL DONE — Passed: $PASSED / $TOTAL, Failed: $FAILED"
+echo "  [job] Finished at: $(date)"
 echo "=============================================="
 
 echo "[job] Cleaning up local temp directory..."
