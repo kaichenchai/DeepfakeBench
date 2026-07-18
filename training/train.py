@@ -50,6 +50,8 @@ parser.add_argument("--ddp", action='store_true', default=False)
 parser.add_argument('--local_rank', type=int, default=-1)
 parser.add_argument('--task_target', type=str, default="", help='specify the target of current training task')
 parser.add_argument('--no-wandb', action='store_true', default=False, help='Disable wandb logging for test runs')
+parser.add_argument('--upload-output', action='store_true', default=False,
+                    help='Upload the entire output folder to wandb as an artifact')
 args = parser.parse_args()
 
 # Handle local_rank from environment (torchrun) or argument (legacy)
@@ -257,6 +259,9 @@ def main():
     if args.no_wandb:
         config['wandb']['enabled'] = False
 
+    if args.upload_output:
+        config['upload_output'] = True
+
     # Auto-detect platform: disable CUDA on macOS, enable on other platforms
     if sys.platform == 'darwin':
         config['cuda'] = False
@@ -348,6 +353,7 @@ def main():
     logger.info("Stop Training on best Testing metric {}".format(parse_metric_for_print(best_metric))) 
 
     # save the final checkpoint (regardless of whether it was the best)
+    final_ckpt_path = None
     if config['save_ckpt']:
         final_ckpt_dir = os.path.join(logger_path, 'final')
         os.makedirs(final_ckpt_dir, exist_ok=True)
@@ -357,6 +363,20 @@ def main():
         else:
             torch.save(trainer.model.state_dict(), final_ckpt_path)
         logger.info(f"Final checkpoint saved to {final_ckpt_path}")
+
+    # Upload entire output folder to wandb as an artifact if requested
+    if config.get('upload_output', False):
+        if hasattr(wandb, 'run') and wandb.run is not None:
+            artifact = wandb.Artifact(
+                name=f"{config.get('model_name', 'model')}_output",
+                type="output",
+                description=f"Full output folder from {config.get('model_name', 'model')} run",
+            )
+            artifact.add_dir(logger_path, name="output")
+            wandb.log_artifact(artifact)
+            logger.info(f"Uploaded output folder to wandb as artifact: {logger_path}")
+        else:
+            logger.warning("--upload-output was set but wandb is not active; skipping upload")
 
     # finish wandb run
     if hasattr(wandb, 'run') and wandb.run is not None:
