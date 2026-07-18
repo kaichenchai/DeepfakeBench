@@ -7,6 +7,11 @@
 
 source .venv/bin/activate
 
+# Load environment variables (wandb API key, etc.)
+if [ -f .env ]; then
+    set -a; source .env; set +a
+fi
+
 python training/cross_dataset_test.py \
         --detector_path "./training/config/detector/effort.yaml" \
         --weights_path "./training/pretrained/effort_clip_L14_trainOn_FaceForensic.pth" \

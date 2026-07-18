@@ -12,6 +12,11 @@ set -euo pipefail
 # Activate virtual environment managed by uv
 source .venv/bin/activate
 
+# Load environment variables (wandb API key, etc.)
+if [ -f .env ]; then
+    set -a; source .env; set +a
+fi
+
 # Redirect multiprocessing temp dir to local storage to avoid
 # "Device or resource busy" errors on Lustre during worker cleanup
 export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}
@@ -24,19 +29,19 @@ torchrun --nproc_per_node=2 \
     --test_dataset "FaceForensics++" \
     --ddp
 
-torchrun --nproc_per_node=2 \
-    training/train.py \
-    --detector_path ./training/config/detector/effort_ce_hsic_8.yaml \
-    --train_dataset "FaceForensics++" \
-    --test_dataset "FaceForensics++" \
-    --ddp
+# torchrun --nproc_per_node=2 \
+#     training/train.py \
+#     --detector_path ./training/config/detector/effort_ce_hsic_8.yaml \
+#     --train_dataset "FaceForensics++" \
+#     --test_dataset "FaceForensics++" \
+#     --ddp
 
-torchrun --nproc_per_node=2 \
-    training/train.py \
-    --detector_path ./training/config/detector/effort_ce_hsic_32.yaml \
-    --train_dataset "FaceForensics++" \
-    --test_dataset "FaceForensics++" \
-    --ddp
+# torchrun --nproc_per_node=2 \
+#     training/train.py \
+#     --detector_path ./training/config/detector/effort_ce_hsic_32.yaml \
+#     --train_dataset "FaceForensics++" \
+#     --test_dataset "FaceForensics++" \
+#     --ddp
 
 # Clean up local temp directory
 rm -rf "$TMPDIR"

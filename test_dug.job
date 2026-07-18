@@ -47,6 +47,10 @@ echo "[job] Activating virtual environment..."
 if [ -f .venv/bin/activate ]; then
     source .venv/bin/activate
     echo "[job] Virtual environment activated."
+    # Load environment variables (wandb API key, etc.)
+    if [ -f .env ]; then
+        set -a; source .env; set +a
+    fi
 else
     echo "[job] ERROR: .venv/bin/activate not found! Searching for python..."
 fi
