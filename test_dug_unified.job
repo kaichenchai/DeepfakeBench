@@ -1,5 +1,5 @@
 #!/bin/bash
-#rj name=effort_cross_dataset_test
+#rj name=cross-dataset-test
 #rj queue=curtin_eecms
 #rj runtime=3
 #rj logdir=logs/slurm/cross_dataset_test
@@ -17,9 +17,9 @@ CFG_DIR="./training/config/detector"
 TRAINING_DIR="./logs/training"
 
 PAIRS=(
-    "effort_ce_hsic_4.yaml|effort_ce_hsic_4_effort_custom_2026-07-02-00-19-58"
-    "effort_ce_hsic_8.yaml|effort_ce_hsic_8_effort_custom_2026-07-02-02-35-09"
-    "effort_ce_hsic_32.yaml|effort_ce_hsic_32_effort_custom_2026-07-02-04-50-04"
+    "effort_ce_hsic_4.yaml|effort_ce_hsic_4_effort_custom_2026-07-18-22-54-14"
+    "effort_ce_hsic_8.yaml|effort_ce_hsic_8_effort_custom_2026-07-18-23-07-16"
+    "effort_ce_hsic_32.yaml|effort_ce_hsic_32_effort_custom_2026-07-19-01-23-24"
 )
 
 
