@@ -1,5 +1,5 @@
 #!/bin/bash
-#rj name=hsic-r-values
+#rj name=lambda-counterfactual-backbone
 #rj queue=curtin_eecms
 #rj runtime=10
 #rj logdir=logs/slurm
@@ -24,17 +24,17 @@ mkdir -p "$TMPDIR"
 
 torchrun --nproc_per_node=2 \
     training/train.py \
-    --detector_path ./training/config/detector/effort_ce_hsic_4.yaml \
+    --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone_5.yaml \
     --train_dataset "FaceForensics++" \
     --test_dataset "FaceForensics++" \
     --ddp
 
-# torchrun --nproc_per_node=2 \
-#     training/train.py \
-#     --detector_path ./training/config/detector/effort_ce_hsic_8.yaml \
-#     --train_dataset "FaceForensics++" \
-#     --test_dataset "FaceForensics++" \
-#     --ddp
+torchrun --nproc_per_node=2 \
+    training/train.py \
+    --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone_10.yaml \
+    --train_dataset "FaceForensics++" \
+    --test_dataset "FaceForensics++" \
+    --ddp
 
 # torchrun --nproc_per_node=2 \
 #     training/train.py \
