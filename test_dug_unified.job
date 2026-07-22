@@ -1,5 +1,5 @@
 #!/bin/bash
-#rj name=effort_cross_dataset_test
+#rj name=cross-dataset-test
 #rj queue=curtin_eecms
 #rj runtime=3
 #rj logdir=logs/slurm/cross_dataset_test
@@ -8,7 +8,8 @@
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CONFIG / WEIGHT PAIRS — runs sequentially
+# CONFIG / WEIGHT PAIRS — runs sequentially.
+# Each pair benchmarks BOTH final/ckpt_final.pth AND test/avg/ckpt_best.pth.
 # Add/remove entries here to change what gets evaluated.
 # Each entry: "CONFIG|WEIGHTS_DIR"
 # ══════════════════════════════════════════════════════════════════════════════
@@ -16,21 +17,9 @@ CFG_DIR="./training/config/detector"
 TRAINING_DIR="./logs/training"
 
 PAIRS=(
-    #"effort_ce.yaml|effort_ce_effort_custom_2026-06-11-14-17-47"
-    #"effort_ce_hsic.yaml|effort_ce_hsic_effort_custom_2026-06-11-15-33-08"
-    #"effort_ce_orthogonal.yaml|effort_ce_orthogonal_effort_custom_2026-06-11-22-33-34"
-    # "effort_ce_hsic_orthogonal_weight.yaml|effort_ce_hsic_orthogonal_weight_effort_custom_2026-06-12-00-14-54"
-    # "effort_ce_weight.yaml|effort_ce_weight_effort_custom_2026-06-12-01-45-21"
-    # "effort_ce_hsic_weight.yaml|effort_ce_hsic_weight_effort_custom_2026-06-12-03-13-27"
-    #"effort_ce_masked_counterfactual_backbone.yaml|effort_ce_masked_counterfactual_backbone_effort_custom_2026-06-17-12-01-10"
-    #"effort_ce_hsic_masked_counterfactual_backbone.yaml|effort_ce_hsic_masked_counterfactual_backbone_effort_custom_2026-06-17-12-37-59"
-    #"effort_ce_hsic_orthogonal_masked_counterfactual_backbone.yaml|effort_ce_hsic_orthogonal_masked_counterfactual_backbone_effort_custom_2026-06-17-12-38-29"
-    #"effort_ce_hsic_orthogonal_weight_masked_counterfactual_backbone.yaml|effort_ce_hsic_orthogonal_weight_masked_counterfactual_backbone_effort_custom_2026-06-17-12-38-41"
-    #"effort.yaml|effort_2026-06-24-19-02-08"
-    #"effort_ce_hsic.yaml|effort_ce_hsic_effort_custom_2026-06-28-20-30-08"
-    "effort_ce_hsic.yaml|effort_ce_hsic_4_effort_custom_2026-07-02-00-19-58"
-    "effort_ce_hsic.yaml|effort_ce_hsic_8_effort_custom_2026-07-02-02-35-09"
-    "effort_ce_hsic.yaml|effort_ce_hsic_32_effort_custom_2026-07-02-04-50-04"
+    "effort_ce_hsic_4.yaml|effort_ce_hsic_4_effort_custom_2026-07-18-22-54-14"
+    "effort_ce_hsic_8.yaml|effort_ce_hsic_8_effort_custom_2026-07-18-23-07-16"
+    "effort_ce_hsic_32.yaml|effort_ce_hsic_32_effort_custom_2026-07-19-01-23-24"
 )
 
 
@@ -43,7 +32,6 @@ echo "  [job] Total pairs to run: ${#PAIRS[@]}"
 echo "=============================================="
 
 echo "[job] Activating virtual environment..."
-# Activate virtual environment managed by uv
 if [ -f .venv/bin/activate ]; then
     source .venv/bin/activate
     echo "[job] Virtual environment activated."
@@ -64,8 +52,6 @@ else
 fi
 
 echo "[job] Setting up temp directory..."
-# Redirect multiprocessing temp dir to local storage to avoid
-# "Device or resource busy" errors on Lustre during worker cleanup
 export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}
 mkdir -p "$TMPDIR" || { echo "[job] ERROR: Could not create TMPDIR=$TMPDIR"; }
 echo "[job] TMPDIR=$TMPDIR"
@@ -92,31 +78,70 @@ FAILED=0
 for i in "${!PAIRS[@]}"; do
     IFS='|' read -r CONFIG_NAME WEIGHTS_DIR_NAME <<< "${PAIRS[$i]}"
     DETECTOR_CONFIG="${CFG_DIR}/${CONFIG_NAME}"
-    WEIGHTS="${TRAINING_DIR}/${WEIGHTS_DIR_NAME}/final/ckpt_final.pth"
+    WEIGHTS_FINAL="${TRAINING_DIR}/${WEIGHTS_DIR_NAME}/final/ckpt_final.pth"
+    WEIGHTS_BEST="${TRAINING_DIR}/${WEIGHTS_DIR_NAME}/test/avg/ckpt_best.pth"
 
     echo ""
     echo "=============================================="
     echo "  [$((i+1))/${TOTAL}] Config:  $CONFIG_NAME"
     echo "  [$((i+1))/${TOTAL}] Weights: $WEIGHTS_DIR_NAME"
+    echo "  [$((i+1))/${TOTAL}] Benchmarking: final + best"
     echo "  [$((i+1))/${TOTAL}] Started at: $(date)"
     echo "=============================================="
+
+    PAIR_OK=true
 
     if [ ! -f "$DETECTOR_CONFIG" ]; then
         echo "  [ERROR] Config not found: $DETECTOR_CONFIG  — SKIPPING"
         FAILED=$((FAILED + 1))
         continue
     fi
-    if [ ! -f "$WEIGHTS" ]; then
-        echo "  [ERROR] Weights not found: $WEIGHTS  — SKIPPING"
-        FAILED=$((FAILED + 1))
-        continue
+
+    # ── FINAL checkpoint ────────────────────────────────────────────────
+
+    echo ""
+    echo "──────────────────────────────────────────────"
+    echo "  [final] Testing: $WEIGHTS_DIR_NAME/final/ckpt_final.pth"
+    echo "  [final] Started at: $(date)"
+    echo "──────────────────────────────────────────────"
+
+    if [ ! -f "$WEIGHTS_FINAL" ]; then
+        echo "  [WARNING] Final weights not found: $WEIGHTS_FINAL  — SKIPPING"
+    else
+        python training/cross_dataset_test.py \
+            --detector_path "$DETECTOR_CONFIG" \
+            --weights_path "$WEIGHTS_FINAL" \
+            --checkpoint_type final \
+        && { echo "  [final] PASSED at $(date)"; } \
+        || { echo "  [final] FAILED at $(date)"; PAIR_OK=false; }
     fi
 
-    python training/cross_dataset_test.py \
-        --detector_path "$DETECTOR_CONFIG" \
-        --weights_path "$WEIGHTS" \
-    && { echo "  [$((i+1))/${TOTAL}] PASSED at $(date)"; PASSED=$((PASSED + 1)); } \
-    || { echo "  [$((i+1))/${TOTAL}] FAILED at $(date)"; FAILED=$((FAILED + 1)); }
+    # ── BEST checkpoint ─────────────────────────────────────────────────
+
+    echo ""
+    echo "──────────────────────────────────────────────"
+    echo "  [best]  Testing: $WEIGHTS_DIR_NAME/test/avg/ckpt_best.pth"
+    echo "  [best]  Started at: $(date)"
+    echo "──────────────────────────────────────────────"
+
+    if [ ! -f "$WEIGHTS_BEST" ]; then
+        echo "  [WARNING] Best weights not found: $WEIGHTS_BEST  — SKIPPING"
+    else
+        python training/cross_dataset_test.py \
+            --detector_path "$DETECTOR_CONFIG" \
+            --weights_path "$WEIGHTS_BEST" \
+            --checkpoint_type best \
+        && { echo "  [best]  PASSED at $(date)"; } \
+        || { echo "  [best]  FAILED at $(date)"; PAIR_OK=false; }
+    fi
+
+    if $PAIR_OK; then
+        echo "  [$((i+1))/${TOTAL}] PAIR PASSED at $(date)"
+        PASSED=$((PASSED + 1))
+    else
+        echo "  [$((i+1))/${TOTAL}] PAIR FAILED at $(date)"
+        FAILED=$((FAILED + 1))
+    fi
 done
 
 echo ""

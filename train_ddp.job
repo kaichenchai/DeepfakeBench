@@ -1,6 +1,7 @@
 #!/bin/bash
-#rj name=effort_model_training_ddp
-#rj runtime=3
+#rj name=lambda-counterfactual-backbone
+#rj queue=curtin_eecms
+#rj runtime=10
 #rj logdir=logs/slurm
 #rj priority=550
 #rj features=a100
@@ -11,6 +12,11 @@ set -euo pipefail
 # Activate virtual environment managed by uv
 source .venv/bin/activate
 
+# Load environment variables (wandb API key, etc.)
+if [ -f .env ]; then
+    set -a; source .env; set +a
+fi
+
 # Redirect multiprocessing temp dir to local storage to avoid
 # "Device or resource busy" errors on Lustre during worker cleanup
 export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}
@@ -18,28 +24,21 @@ mkdir -p "$TMPDIR"
 
 torchrun --nproc_per_node=2 \
     training/train.py \
-    --detector_path ./training/config/detector/effort.yaml \
+    --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone_5.yaml \
+    --train_dataset "FaceForensics++" \
+    --test_dataset "FaceForensics++" \
+    --ddp
+
+torchrun --nproc_per_node=2 \
+    training/train.py \
+    --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone_10.yaml \
     --train_dataset "FaceForensics++" \
     --test_dataset "FaceForensics++" \
     --ddp
 
 # torchrun --nproc_per_node=2 \
 #     training/train.py \
-#     --detector_path ./training/config/detector/effort_ce_hsic_masked_counterfactual_backbone.yaml \
-#     --train_dataset "FaceForensics++" \
-#     --test_dataset "FaceForensics++" \
-#     --ddp
-
-# torchrun --nproc_per_node=2 \
-#     training/train.py \
-#     --detector_path ./training/config/detector/effort_ce_hsic_orthogonal_masked_counterfactual_backbone.yaml \
-#     --train_dataset "FaceForensics++" \
-#     --test_dataset "FaceForensics++" \
-#     --ddp
-
-# torchrun --nproc_per_node=2 \
-#     training/train.py \
-#     --detector_path ./training/config/detector/effort_ce_hsic_orthogonal_weight_masked_counterfactual_backbone.yaml \
+#     --detector_path ./training/config/detector/effort_ce_hsic_32.yaml \
 #     --train_dataset "FaceForensics++" \
 #     --test_dataset "FaceForensics++" \
 #     --ddp
