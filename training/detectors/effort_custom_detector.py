@@ -233,9 +233,14 @@ class Effort_Custom_Detector(AbstractDetector):
                     loss_cfg = self.config["loss_functions"].get(loss_name, {})
                     lambda_val = loss_cfg.get("lambda", 1.0)
                     
-                    loss_val = loss_method(data_dict, pred_dict)
-                    scaled_loss = lambda_val * loss_val
-                    overall_loss += scaled_loss
+                    if loss_name == "hsic":
+                        with torch.no_grad():
+                            loss_val = loss_method(data_dict, pred_dict)
+                            scaled_loss = lambda_val * loss_val
+                    else:
+                        loss_val = loss_method(data_dict, pred_dict)
+                        scaled_loss = lambda_val * loss_val
+                        overall_loss += scaled_loss
                     
                     # update dynamic losses dict for logging
                     key = f"{loss_name}_loss"
