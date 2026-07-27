@@ -24,7 +24,7 @@ mkdir -p "$TMPDIR"
 
 torchrun --nproc_per_node=2 \
     training/train.py \
-    --detector_path ./training/config/detector/effort_ce_hsic.yaml \
+    --detector_path ./training/config/detector/effort_ce_hsic_masked_counterfactual_backbone.yaml \
     --train_dataset "FaceForensics++" \
     --test_dataset "FaceForensics++" \
     --ddp
