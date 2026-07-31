@@ -17,7 +17,9 @@ CFG_DIR="./training/config/detector"
 TRAINING_DIR="./logs/training"
 
 PAIRS=(
-    "effort_ce_hsic_4_masked_counterfactual_backbone.yaml|effort_ce_hsic_4_masked_counterfactual_backbone_effort_custom_2026-07-27-22-25-21"
+    "effort_ce_hsic_8_masked_counterfactual_backbone.yaml|effort_ce_hsic_8_masked_counterfactual_backbone_effort_custom_2026-07-26-02-49-30"
+    "effort_ce_hsic_16_masked_counterfactual_backbone.yaml|effort_ce_hsic_16_masked_counterfactual_backbone_effort_custom_2026-07-26-05-45-25"
+    "effort_ce_hsic_32_masked_counterfactual_backbone.yaml|effort_ce_hsic_32_masked_counterfactual_backbone_effort_custom_2026-07-26-08-41-53"
 )
 
 
