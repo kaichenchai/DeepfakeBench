@@ -5,6 +5,7 @@
 #rj logdir=logs/slurm/cross_dataset_test
 #rj priority=550
 #rj features=a100
+#rj gpus=a100:1
 
 
 # ══════════════════════════════════════════════════════════════════════════════
