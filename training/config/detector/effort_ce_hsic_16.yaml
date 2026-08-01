@@ -1,7 +1,7 @@
 # log dir 
 log_dir: ./logs
 
-run_name: effort_ce_hsic_8
+run_name: effort_ce_hsic_16
 
 # model setting
 pretrained: 'no need to provide this for the effort model'
