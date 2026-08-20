@@ -232,10 +232,20 @@ class Effort_Custom_Detector(AbstractDetector):
                     loss_method = getattr(self, method_name)
                     loss_cfg = self.config["loss_functions"].get(loss_name, {})
                     lambda_val = loss_cfg.get("lambda", 1.0)
-                    
-                    loss_val = loss_method(data_dict, pred_dict)
+                    backprop = loss_cfg.get("backprop", True)
+
+                    # Compute the auxiliary loss. When `backprop` is False the
+                    # loss is still measured and logged, but it is computed
+                    # under no_grad so it never contributes to the backward pass.
+                    if backprop:
+                        loss_val = loss_method(data_dict, pred_dict)
+                    else:
+                        with torch.no_grad():
+                            loss_val = loss_method(data_dict, pred_dict)
+
                     scaled_loss = lambda_val * loss_val
-                    overall_loss += scaled_loss
+                    if backprop:
+                        overall_loss += scaled_loss
                     
                     # update dynamic losses dict for logging
                     key = f"{loss_name}_loss"

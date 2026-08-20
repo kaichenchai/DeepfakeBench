@@ -1,5 +1,5 @@
 #!/bin/bash
-#rj name=lambda-counterfactual-backbone
+#rj name=masked-cf-backbone-no-backwards
 #rj queue=curtin_eecms
 #rj runtime=10
 #rj logdir=logs/slurm
@@ -24,7 +24,21 @@ mkdir -p "$TMPDIR"
 
 torchrun --nproc_per_node=2 \
     training/train.py \
-    --detector_path ./training/config/detector/effort_ce_hsic.yaml \
+    --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone_no_backwards.yaml \
+    --train_dataset "FaceForensics++" \
+    --test_dataset "FaceForensics++" \
+    --ddp
+
+torchrun --nproc_per_node=2 \
+    training/train.py \
+    --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone_no_backwards_5.yaml \
+    --train_dataset "FaceForensics++" \
+    --test_dataset "FaceForensics++" \
+    --ddp
+
+torchrun --nproc_per_node=2 \
+    training/train.py \
+    --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone_no_backwards_10.yaml \
     --train_dataset "FaceForensics++" \
     --test_dataset "FaceForensics++" \
     --ddp
