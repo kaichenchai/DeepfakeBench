@@ -415,7 +415,7 @@ def main():
             print(f"{ds:<22} {'ERROR':>10}")
         else:
             row = f"{ds:<22}"
-            row_dict = {"dataset": ds}
+            row_dict = {"model": config.get("run_name"), "dataset": ds}
             for mk in metric_keys:
                 val = res.get(mk, float("nan"))
                 if isinstance(val, float):
@@ -432,7 +432,7 @@ def main():
     # ── Log summary table, datasets tested & total time to wandb ─────────
     wandb.summary["datasets_tested"] = successful_datasets
     if summary_table_data:
-        columns = ["dataset"] + metric_keys
+        columns = ["model", "dataset"] + metric_keys
         table = wandb.Table(columns=columns)
         for row in summary_table_data:
             table.add_data(*[row.get(c, float("nan")) for c in columns])
