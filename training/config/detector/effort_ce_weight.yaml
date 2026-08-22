@@ -81,7 +81,7 @@ losstype: null
 
 # for supplementary loss functions implemented in the model
 loss_functions:
-  selected: [hsic, weight]
+  selected: [weight]
   orthogonal:
     lambda: 1.0 
   weight:
