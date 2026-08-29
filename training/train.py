@@ -49,6 +49,10 @@ parser.add_argument('--no-save_feat', dest='save_feat', action='store_false', de
 parser.add_argument("--ddp", action='store_true', default=False)
 parser.add_argument('--local_rank', type=int, default=-1)
 parser.add_argument('--task_target', type=str, default="", help='specify the target of current training task')
+parser.add_argument('--manual_seed', type=int, default=None,
+                    help='override the manualSeed value from the detector config')
+parser.add_argument('--run_suffix', type=str, default="",
+                    help='suffix appended to the run name (log dir + wandb run name)')
 parser.add_argument('--no-wandb', action='store_true', default=False, help='Disable wandb logging for test runs')
 parser.add_argument('--upload-output', action='store_true', default=False,
                     help='Upload the entire output folder to wandb as an artifact')
@@ -262,6 +266,13 @@ def main():
     if args.upload_output:
         config['upload_output'] = True
 
+    # CLI overrides applied to config before the Trainer is constructed:
+    # the Trainer snapshots config into the wandb run and the log dir name.
+    if args.manual_seed is not None:
+        config['manualSeed'] = args.manual_seed
+    if args.run_suffix:
+        config['run_suffix'] = args.run_suffix
+
     # Auto-detect platform: disable CUDA on macOS, enable on other platforms
     if sys.platform == 'darwin':
         config['cuda'] = False
@@ -275,16 +286,17 @@ def main():
     # create logger
     timenow=datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
     task_str = f"_{config['task_target']}" if config.get('task_target', None) is not None else ""
+    run_suffix_str = f"_{config['run_suffix']}" if config.get('run_suffix', None) else ""
     
     if config.get('run_name', None) is not None:
         logger_path = os.path.join(
             config['log_dir'],
-            config['run_name'] + '_' + config['model_name'] + task_str + '_' + timenow
+            config['run_name'] + '_' + config['model_name'] + task_str + run_suffix_str + '_' + timenow
         )
     else:
         logger_path =  os.path.join(
                     config['log_dir'],
-                    config['model_name'] + task_str + '_' + timenow
+                    config['model_name'] + task_str + run_suffix_str + '_' + timenow
                 )
     os.makedirs(logger_path, exist_ok=True)
     logger = create_logger(os.path.join(logger_path, 'training.log'))
