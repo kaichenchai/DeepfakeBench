@@ -10,7 +10,7 @@
 #rj logdir=logs/slurm
 #rj priority=550
 #rj features=a100
-#rj array=0-3
+#rj array=0-23
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIG × SEED SWEEP — each array task trains one (config, seed) combination,
@@ -30,7 +30,12 @@ TRAIN_DATASET="FaceForensics++"
 TEST_DATASET="FaceForensics++"
 
 CONFIGS=(
-    "./training/config/detector/effort_ce.yaml"
+    "./training/config/detector/effort_ce_hsic.yaml"
+    "./training/config/detector/effort_ce_masked_counterfactual_backbone.yaml"
+    "./training/config/detector/effort_ce_hsic_masked_counterfactual_backbone.yaml"
+    "./training/config/detector/effort_ce_weight.yaml"
+    "./training/config/detector/effort_ce_orthogonal.yaml"
+    "./training/config/detector/effort_ce_orthogonal_weight.yaml"
 )
 
 SEEDS=(1234 256 2048 9999)
