@@ -1,0 +1,94 @@
+#!/bin/bash
+#rj name=train_ce_seeds
+#rj queue=curtin_eecms
+#rj gpus=a100:2
+#rj nodes=1
+#rj taskspernode=1
+#rj cpus=*
+#rj mem=200G
+#rj runtime=10
+#rj logdir=logs/slurm
+#rj priority=550
+#rj features=a100
+#rj array=0-23
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CONFIG × SEED SWEEP — each array task trains one (config, seed) combination,
+# running in PARALLEL on separate allocations.
+#
+# Tasks are assigned in row-major order:
+#     TASK_ID = CONFIG_IDX * N_SEEDS + SEED_IDX
+# e.g. CONFIGS=(A B), SEEDS=(s1 s2 s3) → task 0=(A,s1), task 3=(B,s1).
+# Set `#rj array=0-N` where N = (num configs × num seeds) - 1.
+#
+# Requires the --manual_seed / --run_suffix flags added to training/train.py.
+# The seed is written into config BEFORE the Trainer is built, so the wandb run
+# config and the run name both carry it (e.g. ..._seed_1234_<timestamp>).
+# ══════════════════════════════════════════════════════════════════════════════
+
+TRAIN_DATASET="FaceForensics++"
+TEST_DATASET="FaceForensics++"
+
+CONFIGS=(
+    "./training/config/detector/effort_ce_hsic.yaml"
+    "./training/config/detector/effort_ce_masked_counterfactual_backbone.yaml"
+    "./training/config/detector/effort_ce_hsic_masked_counterfactual_backbone.yaml"
+    "./training/config/detector/effort_ce_weight.yaml"
+    "./training/config/detector/effort_ce_orthogonal.yaml"
+    "./training/config/detector/effort_ce_orthogonal_weight.yaml"
+)
+
+SEEDS=(1234 256 2048 9999)
+
+# Bash Strict Mode
+set -euo pipefail
+
+TASK_ID=${SLURM_ARRAY_TASK_ID:-0}
+N_CONFIGS=${#CONFIGS[@]}
+N_SEEDS=${#SEEDS[@]}
+TOTAL=$((N_CONFIGS * N_SEEDS))
+
+if [ "$TASK_ID" -ge "$TOTAL" ]; then
+    echo "[job] SLURM_ARRAY_TASK_ID=$TASK_ID out of range (max $((TOTAL-1))) — exiting"
+    exit 0
+fi
+
+CONFIG_IDX=$((TASK_ID / N_SEEDS))
+SEED_IDX=$((TASK_ID % N_SEEDS))
+
+DETECTOR_CONFIG="${CONFIGS[$CONFIG_IDX]}"
+SEED="${SEEDS[$SEED_IDX]}"
+
+echo "=============================================="
+echo "  [job] Array Task $TASK_ID / $((TOTAL-1))"
+echo "  [job] Seed: $SEED"
+echo "  [job] Config: $DETECTOR_CONFIG"
+echo "  [job] Started at: $(date)"
+echo "=============================================="
+
+# Activate virtual environment managed by uv (MUST be in repo root)
+source .venv/bin/activate
+
+# Load environment variables (wandb API key, etc.)
+if [ -f .env ]; then
+    set -a; source .env; set +a
+fi
+
+# Redirect multiprocessing temp dir to local storage to avoid
+# "Device or resource busy" errors on Lustre during worker cleanup
+export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}
+mkdir -p "$TMPDIR"
+
+torchrun --nproc_per_node=2 \
+    training/train.py \
+    --detector_path "$DETECTOR_CONFIG" \
+    --train_dataset "$TRAIN_DATASET" \
+    --test_dataset "$TEST_DATASET" \
+    --manual_seed "$SEED" \
+    --run_suffix "seed_${SEED}" \
+    --ddp
+
+# Clean up local temp directory
+rm -rf "$TMPDIR"
+
+echo "[job] Training (seed $SEED) finished at $(date)."

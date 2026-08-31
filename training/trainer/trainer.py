@@ -74,16 +74,17 @@ class Trainer(object):
         self.timenow = time_now
         # create directory path
         task_str = f"_{config['task_target']}" if config.get('task_target', None) is not None else ""
+        run_suffix_str = f"_{config['run_suffix']}" if config.get('run_suffix', None) else ""
     
         full_run_name = ""
         if config.get('run_name', None) is not None:
-            full_run_name = config['run_name'] + '_' + config['model_name'] + task_str + '_' + self.timenow
+            full_run_name = config['run_name'] + '_' + config['model_name'] + task_str + run_suffix_str + '_' + self.timenow
             self.log_dir = os.path.join(
                 config['log_dir'],
                 full_run_name
             )
         else:
-            full_run_name = config['model_name'] + task_str + '_' + self.timenow
+            full_run_name = config['model_name'] + task_str + run_suffix_str + '_' + self.timenow
             self.log_dir =  os.path.join(
                         config['log_dir'],
                         full_run_name
