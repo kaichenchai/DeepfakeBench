@@ -50,12 +50,21 @@ torchrun --nproc_per_node=2 \
     --test_dataset "FaceForensics++" \
     --ddp
 
-# torchrun --nproc_per_node=2 \
-#     training/train.py \
-#     --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone.yaml \
-#     --train_dataset "FaceForensics++" \
-#     --test_dataset "FaceForensics++" \
-#     --ddp
+# 1. Real constraint only (fake constraint removed)
+torchrun --nproc_per_node=2 \
+    training/train.py \
+    --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone_real_only.yaml \
+    --train_dataset "FaceForensics++" \
+    --test_dataset "FaceForensics++" \
+    --ddp
+
+# 2. Fake constraint only (real constraint removed)
+torchrun --nproc_per_node=2 \
+    training/train.py \
+    --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone_fake_only.yaml \
+    --train_dataset "FaceForensics++" \
+    --test_dataset "FaceForensics++" \
+    --ddp
 
 # Clean up local temp directory
 rm -rf "$TMPDIR"

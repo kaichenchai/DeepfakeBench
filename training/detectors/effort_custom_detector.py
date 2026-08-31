@@ -181,10 +181,17 @@ class Effort_Custom_Detector(AbstractDetector):
 
         mask_real = (data_dict['label'] == 0)
         mask_fake = (data_dict['label'] == 1)
-        
+
+        # Ablation toggles: allow disabling the real / fake constraints individually.
+        # Set e.g. `enable_real_constraint: false` in the `masked_counterfactual_backbone`
+        # section of the loss_functions config to keep only the fake constraint (and vice versa).
+        loss_cfg = self.config["loss_functions"].get("masked_counterfactual_backbone", {})
+        enable_real_constraint = loss_cfg.get("enable_real_constraint", True)
+        enable_fake_constraint = loss_cfg.get("enable_fake_constraint", True)
+
         counterfactual_loss = torch.tensor(0.0, device=next(self.parameters()).device)
         
-        if mask_real.sum() > 0:
+        if enable_real_constraint and mask_real.sum() > 0:
             # Force features to be identical for real images, preserving both direction and magnitude
             cf_real = cf_features[mask_real]
             pred_real = pred_dict['feat'][mask_real]
@@ -196,7 +203,7 @@ class Effort_Custom_Detector(AbstractDetector):
             scale = (cf_real.norm(p=2, dim=-1)**2).mean().detach() + 1e-8
             counterfactual_loss = counterfactual_loss + (mse / scale)
             
-        if mask_fake.sum() > 0:
+        if enable_fake_constraint and mask_fake.sum() > 0:
             # For fake images: calculate cosine similarity along the feature dimension
             cos_sim = F.cosine_similarity(cf_features[mask_fake], pred_dict['feat'][mask_fake], dim=-1)
             
