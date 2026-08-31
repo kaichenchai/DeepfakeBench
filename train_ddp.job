@@ -22,34 +22,6 @@ fi
 export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}
 mkdir -p "$TMPDIR"
 
-# torchrun --nproc_per_node=2 \
-#     training/train.py \
-#     --detector_path ./training/config/detector/effort_ce.yaml \
-#     --train_dataset "FaceForensics++" \
-#     --test_dataset "FaceForensics++" \
-#     --ddp
-
-# torchrun --nproc_per_node=2 \
-#     training/train.py \
-#     --detector_path ./training/config/detector/effort_ce_weight.yaml \
-#     --train_dataset "FaceForensics++" \
-#     --test_dataset "FaceForensics++" \
-#     --ddp
-
-torchrun --nproc_per_node=2 \
-    training/train.py \
-    --detector_path ./training/config/detector/effort_ce_orthogonal.yaml \
-    --train_dataset "FaceForensics++" \
-    --test_dataset "FaceForensics++" \
-    --ddp
-
-torchrun --nproc_per_node=2 \
-    training/train.py \
-    --detector_path ./training/config/detector/effort_ce_orthogonal_weight.yaml \
-    --train_dataset "FaceForensics++" \
-    --test_dataset "FaceForensics++" \
-    --ddp
-
 # 1. Real constraint only (fake constraint removed)
 torchrun --nproc_per_node=2 \
     training/train.py \
