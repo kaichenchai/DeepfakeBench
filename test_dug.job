@@ -1,45 +1,88 @@
 #!/bin/bash
 #rj name=effort_cross_dataset_test
 #rj queue=curtin_eecms
-#rj runtime=3
+#rj runtime=10
 #rj logdir=logs/slurm/cross_dataset_test
 #rj priority=550
 #rj features=a100
+#rj array=0-34
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CONFIG / WEIGHT PAIRS — runs sequentially
+# CONFIG / WEIGHT PAIRS — each pair runs as its own ARRAY TASK in PARALLEL.
+# Uses final/ckpt_final.pth. Task index 0..34 maps to SLURM_ARRAY_TASK_ID.
 # Add/remove entries here to change what gets evaluated.
 # Each entry: "CONFIG|WEIGHTS_DIR"
 # ══════════════════════════════════════════════════════════════════════════════
 CFG_DIR="./training/config/detector"
 TRAINING_DIR="./logs/training"
 
+# 35 runs: 7 model groups x 5 seeds (256, 1024, 1234, 2048, 9999)
 PAIRS=(
-    #"effort_ce.yaml|effort_ce_effort_custom_2026-06-11-14-17-47"
-    #"effort_ce_hsic.yaml|effort_ce_hsic_effort_custom_2026-06-11-15-33-08"
-    #"effort_ce_orthogonal.yaml|effort_ce_orthogonal_effort_custom_2026-06-11-22-33-34"
-    # "effort_ce_hsic_orthogonal_weight.yaml|effort_ce_hsic_orthogonal_weight_effort_custom_2026-06-12-00-14-54"
-    # "effort_ce_weight.yaml|effort_ce_weight_effort_custom_2026-06-12-01-45-21"
-    # "effort_ce_hsic_weight.yaml|effort_ce_hsic_weight_effort_custom_2026-06-12-03-13-27"
-    #"effort_ce_masked_counterfactual_backbone.yaml|effort_ce_masked_counterfactual_backbone_effort_custom_2026-06-17-12-01-10"
-    #"effort_ce_hsic_masked_counterfactual_backbone.yaml|effort_ce_hsic_masked_counterfactual_backbone_effort_custom_2026-06-17-12-37-59"
-    #"effort_ce_hsic_orthogonal_masked_counterfactual_backbone.yaml|effort_ce_hsic_orthogonal_masked_counterfactual_backbone_effort_custom_2026-06-17-12-38-29"
-    #"effort_ce_hsic_orthogonal_weight_masked_counterfactual_backbone.yaml|effort_ce_hsic_orthogonal_weight_masked_counterfactual_backbone_effort_custom_2026-06-17-12-38-41"
-    #"effort.yaml|effort_2026-06-24-19-02-08"
-    #"effort_ce_hsic.yaml|effort_ce_hsic_effort_custom_2026-06-28-20-30-08"
-    "effort_ce_hsic.yaml|effort_ce_hsic_4_effort_custom_2026-07-02-00-19-58"
-    "effort_ce_hsic.yaml|effort_ce_hsic_8_effort_custom_2026-07-02-02-35-09"
-    "effort_ce_hsic.yaml|effort_ce_hsic_32_effort_custom_2026-07-02-04-50-04"
+    # ─── ce ─────────────────────────────────────────────
+    "effort_ce.yaml|effort_ce_effort_custom_seed_256_2026-08-29-17-11-38"
+    "effort_ce.yaml|effort_ce_effort_custom_2026-08-22-16-45-56"                                    # seed 1024
+    "effort_ce.yaml|effort_ce_effort_custom_seed_1234_2026-08-29-17-11-37"
+    "effort_ce.yaml|effort_ce_effort_custom_seed_2048_2026-08-29-17-11-38"
+    "effort_ce.yaml|effort_ce_effort_custom_seed_9999_2026-08-29-17-11-41"
+    # ─── ce_hsic ────────────────────────────────────────
+    "effort_ce_hsic.yaml|effort_ce_hsic_effort_custom_seed_256_2026-08-29-17-48-57"
+    "effort_ce_hsic.yaml|effort_ce_hsic_effort_custom_2026-08-20-21-00-09"                           # seed 1024
+    "effort_ce_hsic.yaml|effort_ce_hsic_effort_custom_seed_1234_2026-08-29-17-48-55"
+    "effort_ce_hsic.yaml|effort_ce_hsic_effort_custom_seed_2048_2026-08-29-17-48-57"
+    "effort_ce_hsic.yaml|effort_ce_hsic_effort_custom_seed_9999_2026-08-29-17-48-57"
+    # ─── ce_hsic_masked_counterfactual_backbone ─────────
+    "effort_ce_hsic_masked_counterfactual_backbone.yaml|effort_ce_hsic_masked_counterfactual_backbone_effort_custom_seed_256_2026-08-29-17-48-53"
+    "effort_ce_hsic_masked_counterfactual_backbone.yaml|effort_ce_hsic_masked_counterfactual_backbone_effort_custom_seed_1024_2026-09-02-00-01-53"
+    "effort_ce_hsic_masked_counterfactual_backbone.yaml|effort_ce_hsic_masked_counterfactual_backbone_effort_custom_seed_1234_2026-08-29-17-48-55"
+    "effort_ce_hsic_masked_counterfactual_backbone.yaml|effort_ce_hsic_masked_counterfactual_backbone_effort_custom_seed_2048_2026-08-29-17-48-58"
+    "effort_ce_hsic_masked_counterfactual_backbone.yaml|effort_ce_hsic_masked_counterfactual_backbone_effort_custom_seed_9999_2026-08-29-17-48-58"
+    # ─── ce_masked_counterfactual_backbone ───────────────
+    "effort_ce_masked_counterfactual_backbone.yaml|effort_ce_masked_counterfactual_backbone_effort_custom_seed_256_2026-08-29-17-48-53"
+    "effort_ce_masked_counterfactual_backbone.yaml|effort_ce_masked_counterfactual_backbone_effort_custom_2026-08-23-02-45-41"  # seed 1024
+    "effort_ce_masked_counterfactual_backbone.yaml|effort_ce_masked_counterfactual_backbone_effort_custom_seed_1234_2026-08-29-17-48-58"
+    "effort_ce_masked_counterfactual_backbone.yaml|effort_ce_masked_counterfactual_backbone_effort_custom_seed_2048_2026-08-29-17-48-53"
+    "effort_ce_masked_counterfactual_backbone.yaml|effort_ce_masked_counterfactual_backbone_effort_custom_seed_9999_2026-08-29-17-48-53"
+    # ─── ce_orthogonal ──────────────────────────────────
+    "effort_ce_orthogonal.yaml|effort_ce_orthogonal_effort_custom_seed_256_2026-08-29-19-14-51"
+    "effort_ce_orthogonal.yaml|effort_ce_orthogonal_effort_custom_2026-08-23-17-49-31"               # seed 1024
+    "effort_ce_orthogonal.yaml|effort_ce_orthogonal_effort_custom_seed_1234_2026-08-29-19-13-35"
+    "effort_ce_orthogonal.yaml|effort_ce_orthogonal_effort_custom_seed_2048_2026-08-29-19-19-52"
+    "effort_ce_orthogonal.yaml|effort_ce_orthogonal_effort_custom_seed_9999_2026-08-29-19-31-56"
+    # ─── ce_orthogonal_weight ───────────────────────────
+    "effort_ce_orthogonal_weight.yaml|effort_ce_orthogonal_weight_effort_custom_seed_256_2026-08-29-19-55-48"
+    "effort_ce_orthogonal_weight.yaml|effort_ce_orthogonal_weight_effort_custom_2026-08-23-19-55-41" # seed 1024
+    "effort_ce_orthogonal_weight.yaml|effort_ce_orthogonal_weight_effort_custom_seed_1234_2026-08-29-19-55-34"
+    "effort_ce_orthogonal_weight.yaml|effort_ce_orthogonal_weight_effort_custom_seed_2048_2026-08-29-19-56-20"
+    "effort_ce_orthogonal_weight.yaml|effort_ce_orthogonal_weight_effort_custom_seed_9999_2026-08-29-20-04-33"
+    # ─── ce_weight ──────────────────────────────────────
+    "effort_ce_weight.yaml|effort_ce_weight_effort_custom_seed_256_2026-08-29-17-48-53"
+    "effort_ce_weight.yaml|effort_ce_weight_effort_custom_2026-08-22-18-47-08"                       # seed 1024
+    "effort_ce_weight.yaml|effort_ce_weight_effort_custom_seed_1234_2026-08-29-17-48-53"
+    "effort_ce_weight.yaml|effort_ce_weight_effort_custom_seed_2048_2026-08-29-17-48-57"
+    "effort_ce_weight.yaml|effort_ce_weight_effort_custom_seed_9999_2026-08-29-19-12-47"
 )
 
+
+TASK_ID=${SLURM_ARRAY_TASK_ID:-0}
+TOTAL=${#PAIRS[@]}
+
+if [ "$TASK_ID" -ge "$TOTAL" ]; then
+    echo "[job] SLURM_ARRAY_TASK_ID=$TASK_ID out of range (max $((TOTAL-1))) — exiting"
+    exit 0
+fi
+
+IFS='|' read -r CONFIG_NAME WEIGHTS_DIR_NAME <<< "${PAIRS[$TASK_ID]}"
+DETECTOR_CONFIG="${CFG_DIR}/${CONFIG_NAME}"
+WEIGHTS="${TRAINING_DIR}/${WEIGHTS_DIR_NAME}/final/ckpt_final.pth"
 
 echo "=============================================="
 echo "  [job] Job started at $(date)"
 echo "  [job] SLURM_JOB_ID=${SLURM_JOB_ID:-N/A}"
+echo "  [job] SLURM_ARRAY_TASK_ID=$TASK_ID / $((TOTAL-1))"
 echo "  [job] Hostname: $(hostname)"
 echo "  [job] Working dir: $(pwd)"
-echo "  [job] Total pairs to run: ${#PAIRS[@]}"
+echo "  [job] Total pairs: $TOTAL"
 echo "=============================================="
 
 echo "[job] Activating virtual environment..."
@@ -66,7 +109,7 @@ fi
 echo "[job] Setting up temp directory..."
 # Redirect multiprocessing temp dir to local storage to avoid
 # "Device or resource busy" errors on Lustre during worker cleanup
-export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}
+export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}
 mkdir -p "$TMPDIR" || { echo "[job] ERROR: Could not create TMPDIR=$TMPDIR"; }
 echo "[job] TMPDIR=$TMPDIR"
 
@@ -80,49 +123,69 @@ for ds in FaceForensics++ UADFV Celeb-DF-v1 Celeb-DF-v2 DFDC DFDCP; do
 done
 
 echo "=============================================="
-echo "  [job] Starting sequential pair evaluations..."
+echo "  [job] Array Task $TASK_ID:"
+echo "  [job]   Config:  $CONFIG_NAME"
+echo "  [job]   Weights: $WEIGHTS_DIR_NAME/final/ckpt_final.pth"
+echo "  [job] Started at: $(date)"
 echo "=============================================="
 
 set -euo pipefail
 
-TOTAL=${#PAIRS[@]}
-PASSED=0
-FAILED=0
+if [ ! -f "$DETECTOR_CONFIG" ]; then
+    echo "  [ERROR] Config not found: $DETECTOR_CONFIG  — EXITING"
+    exit 1
+fi
+if [ ! -f "$WEIGHTS" ]; then
+    echo "  [ERROR] Weights not found: $WEIGHTS  — EXITING"
+    exit 1
+fi
 
-for i in "${!PAIRS[@]}"; do
-    IFS='|' read -r CONFIG_NAME WEIGHTS_DIR_NAME <<< "${PAIRS[$i]}"
-    DETECTOR_CONFIG="${CFG_DIR}/${CONFIG_NAME}"
-    WEIGHTS="${TRAINING_DIR}/${WEIGHTS_DIR_NAME}/final/ckpt_final.pth"
+# Derive short model label from the config name: effort_ce_hsic.yaml -> ce_hsic
+MODEL_LABEL="$(basename "${CONFIG_NAME%.yaml}")"
+MODEL_LABEL="${MODEL_LABEL#effort_}"
 
-    echo ""
-    echo "=============================================="
-    echo "  [$((i+1))/${TOTAL}] Config:  $CONFIG_NAME"
-    echo "  [$((i+1))/${TOTAL}] Weights: $WEIGHTS_DIR_NAME"
-    echo "  [$((i+1))/${TOTAL}] Started at: $(date)"
-    echo "=============================================="
+# Derive seed from the run folder; base-named (seed-1024) runs have no _seed_ token
+if [[ "$WEIGHTS_DIR_NAME" =~ _seed_([0-9]+)_ ]]; then
+    SEED="${BASH_REMATCH[1]}"
+else
+    SEED="1024"
+fi
 
-    if [ ! -f "$DETECTOR_CONFIG" ]; then
-        echo "  [ERROR] Config not found: $DETECTOR_CONFIG  — SKIPPING"
-        FAILED=$((FAILED + 1))
-        continue
-    fi
-    if [ ! -f "$WEIGHTS" ]; then
-        echo "  [ERROR] Weights not found: $WEIGHTS  — SKIPPING"
-        FAILED=$((FAILED + 1))
-        continue
-    fi
+# Read the config's run_name from the YAML for the wandb run name
+CONFIG_RUN_NAME="$(grep -E '^[[:space:]]*run_name:' "$DETECTOR_CONFIG" | head -n1 | sed -E 's/^[[:space:]]*run_name:[[:space:]]*//; s/[[:space:]]*#.*$//')"
+CONFIG_RUN_NAME="${CONFIG_RUN_NAME//\"/}"
+CONFIG_RUN_NAME="${CONFIG_RUN_NAME//\'/}"
+CONFIG_RUN_NAME="${CONFIG_RUN_NAME:-$(basename "${CONFIG_NAME%.yaml}")}"
+echo "  [job] Run label: ${MODEL_LABEL} / seed ${SEED} / config run_name: ${CONFIG_RUN_NAME}"
 
-    python training/cross_dataset_test.py \
-        --detector_path "$DETECTOR_CONFIG" \
-        --weights_path "$WEIGHTS" \
-    && { echo "  [$((i+1))/${TOTAL}] PASSED at $(date)"; PASSED=$((PASSED + 1)); } \
-    || { echo "  [$((i+1))/${TOTAL}] FAILED at $(date)"; FAILED=$((FAILED + 1)); }
-done
+# Unique per-task output dir so concurrent tasks never collide on result files
+TASK_OUT_DIR="${TMPDIR}/result_${TASK_ID}"
+mkdir -p "$TASK_OUT_DIR"
+echo "  [job] Task output dir: $TASK_OUT_DIR"
+
+python training/cross_dataset_test.py \
+    --detector_path "$DETECTOR_CONFIG" \
+    --weights_path "$WEIGHTS" \
+    --checkpoint_type final \
+    --output_dir "$TASK_OUT_DIR" \
+    --wandb_name "cross_dataset_test_${CONFIG_RUN_NAME}_seed_${SEED}" \
+    --wandb_extra_tags multiple_seeds_test
+
+# Rename this task's result JSON to a descriptive, collision-free name
+RESULT_FILE="$(ls -1 "$TASK_OUT_DIR"/cross_dataset_results_*.json 2>/dev/null | head -n1)"
+if [ -n "$RESULT_FILE" ]; then
+    DEST_DIR="./logs/cross_dataset_test/multiple_seeds/${SEED}"
+    mkdir -p "$DEST_DIR"
+    DEST="${DEST_DIR}/cross_dataset_results_${MODEL_LABEL}_seed_${SEED}.json"
+    mv -f "$RESULT_FILE" "$DEST"
+    echo "  [job] Results saved to: $DEST"
+else
+    echo "  [job] WARNING: No result JSON produced in $TASK_OUT_DIR"
+fi
 
 echo ""
 echo "=============================================="
-echo "  [job] ALL DONE — Passed: $PASSED / $TOTAL, Failed: $FAILED"
-echo "  [job] Finished at: $(date)"
+echo "  [job] Array Task $TASK_ID PASSED at $(date)"
 echo "=============================================="
 
 echo "[job] Cleaning up local temp directory..."

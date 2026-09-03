@@ -6,6 +6,7 @@ generalization performance.
 
 Datasets tested:
     - FaceForensics++
+    - DeepFakeDetection
     - UADFV
     - Celeb-DF-v1
     - Celeb-DF-v2
@@ -54,11 +55,26 @@ print("[cross_dataset_test] All imports complete.", flush=True)
 # ── Default cross-dataset test suite ─────────────────────────────────────────
 CROSS_DATASETS = [
     "FaceForensics++",
+    "DeepFakeDetection",   # DFD (Google DeepFake Detection) — shares FF++ layout
     "UADFV",
     "Celeb-DF-v1",
     "Celeb-DF-v2",
     "DFDC",
     "DFDCP",
+]
+
+# Datasets whose raw data lives INSIDE the FaceForensics++ folder on disk
+# (shared FF++ download layout), rather than at <rgb_dir>/<dataset_name>.
+# DFD (DeepFakeDetection) is one of these, so its directory must be resolved
+# under FaceForensics++ or the pre-check below would wrongly skip it.
+FFPP_NESTED_DATASETS = [
+    "FaceForensics++",
+    "DeepFakeDetection",
+    "FaceShifter",
+    "FF-DF",
+    "FF-F2F",
+    "FF-FS",
+    "FF-NT",
 ]
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
@@ -98,6 +114,10 @@ parser.add_argument(
 parser.add_argument(
     "--wandb_tags", type=str, nargs="+", default=None,
     help="Tags for wandb run (default: ['cross_dataset', config['model_name']])."
+)
+parser.add_argument(
+    "--wandb_extra_tags", type=str, nargs="+", default=None,
+    help="Additional tags APPENDED to the wandb tags (keeps defaults), e.g. 'multiple_seeds'."
 )
 parser.add_argument(
     "--checkpoint_type", type=str, choices=["best", "final"], default="final",
@@ -272,11 +292,13 @@ def init_wandb(config: dict, weights_dir: str):
     else:
         run_name = ckpt_prefix + "cross_dataset_test_" + config.get("model_name", "unknown")
 
-    # Tags: CLI arg > default tags with model_name
+    # Tags: CLI arg > default tags with model_name, then append any extra tags
     if args.wandb_tags:
-        tags = args.wandb_tags
+        tags = list(args.wandb_tags)
     else:
         tags = ["test", config.get("model_name", "unknown")]
+    if args.wandb_extra_tags:
+        tags += list(args.wandb_extra_tags)
 
     wandb.init(
         project=project,
@@ -342,8 +364,14 @@ def main():
         print(f"{'─' * 60}")
 
         # ── Pre-check: verify dataset directory exists on disk ────────────
+        # Most datasets live at <rgb_dir>/<dataset_name>, but FF++ and its
+        # nested subsets (DFD/DeepFakeDetection, FaceShifter, FF-DF/F2F/FS/NT)
+        # are stored inside the FaceForensics++ folder, so check that instead.
         rgb_dir = config.get("rgb_dir", "./datasets/rgb")
-        dataset_path = os.path.join(rgb_dir, dataset_name)
+        if dataset_name in FFPP_NESTED_DATASETS:
+            dataset_path = os.path.join(rgb_dir, "FaceForensics++")
+        else:
+            dataset_path = os.path.join(rgb_dir, dataset_name)
         if not os.path.isdir(dataset_path):
             print(f"  [SKIP] Dataset directory not found: {dataset_path}")
             all_results[dataset_name] = {"error": f"directory not found: {dataset_path}"}
