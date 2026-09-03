@@ -33,24 +33,35 @@ class Effort_Custom_Detector(AbstractDetector):
     def __init__(self, config=None):
         super(Effort_Custom_Detector, self).__init__(config)
         self.config = config
-        self.backbone = self.build_backbone(config)
+
+        # Load the pretrained CLIP ViT-L/14 once and derive both models from it.
+        clip_model = CLIPModel.from_pretrained("./models--openai--clip-vit-large-patch14/")
+
+        # Counterfactual backbone = the pristine, frozen original CLIP ViT.
+        # Built as a deepcopy BEFORE the SVD decomposition is applied, so the
+        # reference the residual is compared against is the true pretrained
+        # model, independent of svd_trainable_ranks.
         if self.config['loss_functions'].get("requires_counterfactual_backbone", False):
-            self.counterfactual_backbone = self.build_counterfactual_backbone(self.backbone)
+            self.counterfactual_backbone = copy.deepcopy(clip_model.vision_model)
+            for param in self.counterfactual_backbone.parameters():
+                param.requires_grad = False
+            self.counterfactual_backbone.eval()
+
+        self.backbone = self.build_backbone(config, clip_model)
+
         self.head = nn.Linear(1024, 2)
         self.loss_func = nn.CrossEntropyLoss()
         self.prob, self.label = [], []
         self.correct, self.total = 0, 0
         self.mse_loss_func = nn.MSELoss()
 
-    def build_backbone(self, config):
-        # Download model
+    def build_backbone(self, config, clip_model=None):
+        # ViT-L/14 224*224
         # https://huggingface.co/openai/clip-vit-large-patch14
-        
         # mean: [0.48145466, 0.4578275, 0.40821073]
         # std: [0.26862954, 0.26130258, 0.27577711]
-        
-        # ViT-L/14 224*224
-        clip_model = CLIPModel.from_pretrained("./models--openai--clip-vit-large-patch14/")
+        if clip_model is None:
+            clip_model = CLIPModel.from_pretrained("./models--openai--clip-vit-large-patch14/")
 
         # Apply SVD to self_attn layers only
         # ViT-L/14 224*224: 1024-1
@@ -65,18 +76,6 @@ class Effort_Custom_Detector(AbstractDetector):
 
         return clip_model.vision_model
     
-    def build_counterfactual_backbone(self, backbone):
-        # Zero out residual components to get counterfactual backbone
-        cf_model = copy.deepcopy(backbone)
-        for module in cf_model.modules():
-            if isinstance(module, SVDResidualLinear) and module.S_residual is not None:
-                module.S_residual = nn.Parameter(
-                    torch.zeros_like(module.S_residual), requires_grad=False
-                )
-        for param in cf_model.parameters():
-            param.requires_grad = False
-        return cf_model
-
     def build_loss(self, config):
         # prepare the loss function
         # This detector uses multiple losses, but we can return the main one here if needed
@@ -267,8 +266,9 @@ class Effort_Custom_Detector(AbstractDetector):
           - backbone (with its SVDResidualLinear residual params)
           - head
 
-        The counterfactual backbone is NOT saved because it is purely
-        derived from the backbone (deepcopy + zeroed S_residual).
+        The counterfactual backbone is NOT saved because it is the
+        pristine, frozen original CLIP ViT, rebuilt from the local HF
+        checkpoint at construction time.
         """
         sd = super().state_dict(destination, prefix, keep_vars)
 
@@ -282,9 +282,9 @@ class Effort_Custom_Detector(AbstractDetector):
 
     def load_state_dict(self, state_dict, strict: bool = True):
         """
-        Load backbone + head weights.  Afterwards, if a counterfactual
-        backbone exists, rebuild it from the (now updated) backbone so
-        that it stays in sync.
+        Load backbone + head weights.  The counterfactual backbone (the
+        pristine, frozen original CLIP ViT) is built independently at
+        construction time and is left untouched here.
 
         Returns a ``_IncompatibleKeys`` namedtuple with fields
         ``missing_keys`` and ``unexpected_keys`` (same as
@@ -298,10 +298,11 @@ class Effort_Custom_Detector(AbstractDetector):
         }
 
         if hasattr(self, 'counterfactual_backbone') and self.counterfactual_backbone is not None:
-            # Counterfactual backbone is rebuilt from the (now updated)
-            # backbone, so its params are intentionally absent from the
-            # checkpoint.  Load with strict=False, then validate that
-            # *only* cf keys are missing (anything else is a real problem).
+            # The counterfactual backbone is the pristine, frozen original
+            # CLIP ViT built at construction time (not from the checkpoint),
+            # so its params are intentionally absent from the checkpoint.
+            # Load with strict=False, then validate that *only* cf keys are
+            # missing (anything else is a real problem).
             result = super().load_state_dict(filtered, strict=False)
             real_missing = [k for k in result.missing_keys
                             if not k.startswith('counterfactual_backbone.')]
@@ -312,8 +313,6 @@ class Effort_Custom_Detector(AbstractDetector):
                 raise RuntimeError(
                     f'Missing key(s) in state_dict: {real_missing}'
                 )
-            # Re-sync the counterfactual backbone from the loaded backbone.
-            self.counterfactual_backbone = self.build_counterfactual_backbone(self.backbone)
             return result
         else:
             return super().load_state_dict(filtered, strict=strict)
