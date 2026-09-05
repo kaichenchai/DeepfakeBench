@@ -5,7 +5,7 @@
 #rj logdir=logs/slurm/cross_dataset_test
 #rj priority=550
 #rj features=a100
-#rj array=0-34
+#rj array=0-1
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -19,49 +19,9 @@ TRAINING_DIR="./logs/training"
 
 # 35 runs: 7 model groups x 5 seeds (256, 1024, 1234, 2048, 9999)
 PAIRS=(
-    # ─── ce ─────────────────────────────────────────────
-    "effort_ce.yaml|effort_ce_effort_custom_seed_256_2026-08-29-17-11-38"
-    "effort_ce.yaml|effort_ce_effort_custom_2026-08-22-16-45-56"                                    # seed 1024
-    "effort_ce.yaml|effort_ce_effort_custom_seed_1234_2026-08-29-17-11-37"
-    "effort_ce.yaml|effort_ce_effort_custom_seed_2048_2026-08-29-17-11-38"
-    "effort_ce.yaml|effort_ce_effort_custom_seed_9999_2026-08-29-17-11-41"
-    # ─── ce_hsic ────────────────────────────────────────
-    "effort_ce_hsic.yaml|effort_ce_hsic_effort_custom_seed_256_2026-08-29-17-48-57"
-    "effort_ce_hsic.yaml|effort_ce_hsic_effort_custom_2026-08-20-21-00-09"                           # seed 1024
-    "effort_ce_hsic.yaml|effort_ce_hsic_effort_custom_seed_1234_2026-08-29-17-48-55"
-    "effort_ce_hsic.yaml|effort_ce_hsic_effort_custom_seed_2048_2026-08-29-17-48-57"
-    "effort_ce_hsic.yaml|effort_ce_hsic_effort_custom_seed_9999_2026-08-29-17-48-57"
-    # ─── ce_hsic_masked_counterfactual_backbone ─────────
-    "effort_ce_hsic_masked_counterfactual_backbone.yaml|effort_ce_hsic_masked_counterfactual_backbone_effort_custom_seed_256_2026-08-29-17-48-53"
-    "effort_ce_hsic_masked_counterfactual_backbone.yaml|effort_ce_hsic_masked_counterfactual_backbone_effort_custom_seed_1024_2026-09-02-00-01-53"
-    "effort_ce_hsic_masked_counterfactual_backbone.yaml|effort_ce_hsic_masked_counterfactual_backbone_effort_custom_seed_1234_2026-08-29-17-48-55"
-    "effort_ce_hsic_masked_counterfactual_backbone.yaml|effort_ce_hsic_masked_counterfactual_backbone_effort_custom_seed_2048_2026-08-29-17-48-58"
-    "effort_ce_hsic_masked_counterfactual_backbone.yaml|effort_ce_hsic_masked_counterfactual_backbone_effort_custom_seed_9999_2026-08-29-17-48-58"
-    # ─── ce_masked_counterfactual_backbone ───────────────
-    "effort_ce_masked_counterfactual_backbone.yaml|effort_ce_masked_counterfactual_backbone_effort_custom_seed_256_2026-08-29-17-48-53"
-    "effort_ce_masked_counterfactual_backbone.yaml|effort_ce_masked_counterfactual_backbone_effort_custom_2026-08-23-02-45-41"  # seed 1024
-    "effort_ce_masked_counterfactual_backbone.yaml|effort_ce_masked_counterfactual_backbone_effort_custom_seed_1234_2026-08-29-17-48-58"
-    "effort_ce_masked_counterfactual_backbone.yaml|effort_ce_masked_counterfactual_backbone_effort_custom_seed_2048_2026-08-29-17-48-53"
-    "effort_ce_masked_counterfactual_backbone.yaml|effort_ce_masked_counterfactual_backbone_effort_custom_seed_9999_2026-08-29-17-48-53"
-    # ─── ce_orthogonal ──────────────────────────────────
-    "effort_ce_orthogonal.yaml|effort_ce_orthogonal_effort_custom_seed_256_2026-08-29-19-14-51"
-    "effort_ce_orthogonal.yaml|effort_ce_orthogonal_effort_custom_2026-08-23-17-49-31"               # seed 1024
-    "effort_ce_orthogonal.yaml|effort_ce_orthogonal_effort_custom_seed_1234_2026-08-29-19-13-35"
-    "effort_ce_orthogonal.yaml|effort_ce_orthogonal_effort_custom_seed_2048_2026-08-29-19-19-52"
-    "effort_ce_orthogonal.yaml|effort_ce_orthogonal_effort_custom_seed_9999_2026-08-29-19-31-56"
-    # ─── ce_orthogonal_weight ───────────────────────────
-    "effort_ce_orthogonal_weight.yaml|effort_ce_orthogonal_weight_effort_custom_seed_256_2026-08-29-19-55-48"
-    "effort_ce_orthogonal_weight.yaml|effort_ce_orthogonal_weight_effort_custom_2026-08-23-19-55-41" # seed 1024
-    "effort_ce_orthogonal_weight.yaml|effort_ce_orthogonal_weight_effort_custom_seed_1234_2026-08-29-19-55-34"
-    "effort_ce_orthogonal_weight.yaml|effort_ce_orthogonal_weight_effort_custom_seed_2048_2026-08-29-19-56-20"
-    "effort_ce_orthogonal_weight.yaml|effort_ce_orthogonal_weight_effort_custom_seed_9999_2026-08-29-20-04-33"
-    # ─── ce_weight ──────────────────────────────────────
-    "effort_ce_weight.yaml|effort_ce_weight_effort_custom_seed_256_2026-08-29-17-48-53"
-    "effort_ce_weight.yaml|effort_ce_weight_effort_custom_2026-08-22-18-47-08"                       # seed 1024
-    "effort_ce_weight.yaml|effort_ce_weight_effort_custom_seed_1234_2026-08-29-17-48-53"
-    "effort_ce_weight.yaml|effort_ce_weight_effort_custom_seed_2048_2026-08-29-17-48-57"
-    "effort_ce_weight.yaml|effort_ce_weight_effort_custom_seed_9999_2026-08-29-19-12-47"
-)
+    "effort_ce_masked_counterfactual_backbone.yaml|effort_ce_masked_counterfactual_backbone_effort_custom_clip_counterfactual_2026-09-03-23-14-11"
+    "effort_ce_masked_counterfactual_backbone_4.yaml|effort_ce_masked_counterfactual_backbone_4_effort_custom_clip_counterfactual_2026-09-04-02-07-38"                                    # seed 1024
+ )
 
 
 TASK_ID=${SLURM_ARRAY_TASK_ID:-0}
