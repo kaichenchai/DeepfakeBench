@@ -53,6 +53,9 @@ class Effort_Custom_Detector(AbstractDetector):
         self.loss_func = nn.CrossEntropyLoss()
         self.prob, self.label = [], []
         self.correct, self.total = 0, 0
+        # Per-batch cache for the (frozen) counterfactual backbone features,
+        # shared by all auxiliary losses that need them. Invalidated in forward().
+        self.cf_features = None
 
     def build_backbone(self, config, clip_model=None):
         # ViT-L/14 224*224
@@ -87,6 +90,16 @@ class Effort_Custom_Detector(AbstractDetector):
 
     def classifier(self, features: torch.tensor) -> torch.tensor:
         return self.head(features)
+
+    def _get_cf_features(self, data_dict: dict) -> torch.Tensor:
+        # Compute (and cache) the frozen counterfactual backbone's pooler
+        # features for the current batch. Runs under no_grad since the
+        # counterfactual backbone has requires_grad=False everywhere. Cached
+        # once per batch so multiple auxiliary losses share one forward pass.
+        if self.cf_features is None:
+            with torch.no_grad():
+                self.cf_features = self.counterfactual_backbone(data_dict["image"])["pooler_output"]
+        return self.cf_features
 
     def get_orthogonal_loss(self, data_dict: dict = None, pred_dict: dict = None) -> torch.Tensor:
         # Regularization term
@@ -148,8 +161,7 @@ class Effort_Custom_Detector(AbstractDetector):
         # Both terms are bounded and on the same natural scale (no MSE, no
         # feature-norm dependence). The label acts as a switch so each sample
         # contributes only its own branch, and both feed one scalar.
-        with torch.no_grad():
-            cf_features = self.counterfactual_backbone(data_dict["image"])["pooler_output"]
+        cf_features = self._get_cf_features(data_dict)
 
         cos_sim = F.cosine_similarity(cf_features, pred_dict['feat'], dim=-1)
         label = data_dict['label'].float().to(cos_sim.device)
@@ -170,8 +182,7 @@ class Effort_Custom_Detector(AbstractDetector):
         if mask_fake.sum() == 0:
             return torch.tensor(0.0, device=next(self.parameters()).device)
 
-        with torch.no_grad():
-            cf_features = self.counterfactual_backbone(data_dict["image"])["pooler_output"]
+        cf_features = self._get_cf_features(data_dict)
 
         # Mask BEFORE the head so logits are only computed for the fake subset.
         cf_logits = self.head(cf_features[mask_fake])
@@ -259,6 +270,9 @@ class Effort_Custom_Detector(AbstractDetector):
         return metric_batch_dict
 
     def forward(self, data_dict: dict, inference=False) -> dict:
+        # New batch: invalidate the per-batch counterfactual-features cache so
+        # the auxiliary losses lazily recompute it (once) for this batch.
+        self.cf_features = None
         # get the features by backbone
         features = self.features(data_dict)
         # get the prediction by classifier
