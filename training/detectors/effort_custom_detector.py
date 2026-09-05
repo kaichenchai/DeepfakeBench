@@ -53,7 +53,6 @@ class Effort_Custom_Detector(AbstractDetector):
         self.loss_func = nn.CrossEntropyLoss()
         self.prob, self.label = [], []
         self.correct, self.total = 0, 0
-        self.mse_loss_func = nn.MSELoss()
 
     def build_backbone(self, config, clip_model=None):
         # ViT-L/14 224*224
@@ -138,35 +137,48 @@ class Effort_Custom_Detector(AbstractDetector):
         return loss
     
     def get_masked_counterfactual_backbone_loss(self, data_dict: dict, pred_dict: dict) -> torch.Tensor:
-        # Similar to get_masked_counterfactual_loss but applies MSE loss before the head, directly on 1024 output features
+        # Unified cosine-based formulation applied directly on the 1024-d
+        # pooler features (before the head).
+        #
+        #   loss = y * cos^2 + (1 - y) * (1 - cos)
+        #
+        #   y = 0 (real): 1 - cos_sim  -> pull features toward perfect alignment
+        #   y = 1 (fake): cos_sim^2    -> push features toward orthogonality
+        #
+        # Both terms are bounded and on the same natural scale (no MSE, no
+        # feature-norm dependence). The label acts as a switch so each sample
+        # contributes only its own branch, and both feed one scalar.
         with torch.no_grad():
             cf_features = self.counterfactual_backbone(data_dict["image"])["pooler_output"]
 
-        mask_real = (data_dict['label'] == 0)
+        cos_sim = F.cosine_similarity(cf_features, pred_dict['feat'], dim=-1)
+        label = data_dict['label'].float().to(cos_sim.device)
+
+        loss = label * (cos_sim ** 2) + (1 - label) * (1 - cos_sim)
+        return loss.mean()
+    
+    def get_kl_decision_loss(self, data_dict: dict, pred_dict: dict) -> torch.Tensor:
+        # Decision-level counterfactual loss: for fake images only, push the
+        # counterfactual logits (pristine CLIP features through the shared
+        # head) toward uniform — "without the residual pathway, the model
+        # should have no evidence either way."
+        #
+        # Gradient flows ONLY into self.head (the counterfactual backbone is
+        # frozen); the head call must stay OUTSIDE torch.no_grad() or this
+        # loss silently contributes zero gradient.
         mask_fake = (data_dict['label'] == 1)
-        
-        counterfactual_loss = torch.tensor(0.0, device=next(self.parameters()).device)
-        
-        if mask_real.sum() > 0:
-            # Force features to be identical for real images, preserving both direction and magnitude
-            cf_real = cf_features[mask_real]
-            pred_real = pred_dict['feat'][mask_real]
-            mse = self.mse_loss_func(cf_real, pred_real)
-            
-            # Normalize MSE by the squared L2 norm of the output from the counterfactual backbone
-            # This helps to try and align the scale with cosine similarity
-            # The epsilon prevents division by zero, is a pretty standard value also used by adam etc.
-            scale = (cf_real.norm(p=2, dim=-1)**2).mean().detach() + 1e-8
-            counterfactual_loss = counterfactual_loss + (mse / scale)
-            
-        if mask_fake.sum() > 0:
-            # For fake images: calculate cosine similarity along the feature dimension
-            cos_sim = F.cosine_similarity(cf_features[mask_fake], pred_dict['feat'][mask_fake], dim=-1)
-            
-            # Enforce orthogonality: penalize positive similarity by increasing loss, ignore zero or negative similarity
-            counterfactual_loss = counterfactual_loss + F.relu(cos_sim).mean()
-            
-        return counterfactual_loss
+        if mask_fake.sum() == 0:
+            return torch.tensor(0.0, device=next(self.parameters()).device)
+
+        with torch.no_grad():
+            cf_features = self.counterfactual_backbone(data_dict["image"])["pooler_output"]
+
+        # Mask BEFORE the head so logits are only computed for the fake subset.
+        cf_logits = self.head(cf_features[mask_fake])
+
+        log_probs = F.log_softmax(cf_logits, dim=-1)
+        uniform_target = torch.full_like(log_probs, 1.0 / log_probs.size(-1))
+        return F.kl_div(log_probs, uniform_target, reduction='batchmean')
     
     def get_losses(self, data_dict: dict, pred_dict: dict) -> dict:
         label = data_dict['label']
@@ -181,6 +193,7 @@ class Effort_Custom_Detector(AbstractDetector):
             'weight_loss': torch.tensor(0.0, device=pred.device).detach(),
             'orthogonal_loss': torch.tensor(0.0, device=pred.device).detach(),
             'masked_counterfactual_backbone_loss': torch.tensor(0.0, device=pred.device).detach(),
+            'kl_decision_loss': torch.tensor(0.0, device=pred.device).detach(),
         }
         
         # Only compute all of these other losses when training
