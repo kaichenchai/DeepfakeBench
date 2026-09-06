@@ -163,11 +163,31 @@ class Effort_Custom_Detector(AbstractDetector):
         # contributes only its own branch, and both feed one scalar.
         cf_features = self._get_cf_features(data_dict)
 
-        cos_sim = F.cosine_similarity(cf_features, pred_dict['feat'], dim=-1)
-        label = data_dict['label'].float().to(cos_sim.device)
-
-        loss = label * (cos_sim ** 2) + (1 - label) * (1 - cos_sim)
-        return loss.mean()
+        mask_real = (data_dict['label'] == 0)
+        mask_fake = (data_dict['label'] == 1)
+        
+        counterfactual_loss = torch.tensor(0.0, device=next(self.parameters()).device)
+        
+        if mask_real.sum() > 0:
+            # Force features to be identical for real images, preserving both direction and magnitude
+            cf_real = cf_features[mask_real]
+            pred_real = pred_dict['feat'][mask_real]
+            mse = self.mse_loss_func(cf_real, pred_real)
+            
+            # Normalize MSE by the squared L2 norm of the output from the counterfactual backbone
+            # This helps to try and align the scale with cosine similarity
+            # The epsilon prevents division by zero, is a pretty standard value also used by adam etc.
+            scale = (cf_real.norm(p=2, dim=-1)**2).mean().detach() + 1e-8
+            counterfactual_loss = counterfactual_loss + (mse / scale)
+            
+        if mask_fake.sum() > 0:
+            # For fake images: calculate cosine similarity along the feature dimension
+            cos_sim = F.cosine_similarity(cf_features[mask_fake], pred_dict['feat'][mask_fake], dim=-1)
+            
+            # Enforce orthogonality: penalize positive similarity by increasing loss, ignore zero or negative similarity
+            counterfactual_loss = counterfactual_loss + F.relu(cos_sim).mean()
+            
+        return counterfactual_loss
     
     def get_kl_decision_loss(self, data_dict: dict, pred_dict: dict) -> torch.Tensor:
         # Decision-level counterfactual loss: for fake images only, push the
