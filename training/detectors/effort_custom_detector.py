@@ -191,8 +191,12 @@ class Effort_Custom_Detector(AbstractDetector):
             # For fake images: calculate cosine similarity along the feature dimension
             cos_sim = F.cosine_similarity(cf_features[mask_fake], pred_dict['feat'][mask_fake], dim=-1)
             
-            # Enforce orthogonality: penalize positive similarity by increasing loss, ignore zero or negative similarity
-            counterfactual_loss = counterfactual_loss + F.relu(cos_sim).mean()
+            # Enforce orthogonality: penalize positive similarity by increasing loss, ignore zero or negative similarity.
+            # Temperature-scaled softplus: softplus(beta*cos_sim)/beta with beta=3.
+            # Approximates relu (so negative/zero similarity is ~ignored) while still being
+            # C^inf smooth (continuous, non-zero gradient) and avoiding relu's hard kink.
+            beta = 3.0
+            counterfactual_loss = counterfactual_loss + F.softplus(beta * cos_sim).mean() / beta
             
         return counterfactual_loss
     

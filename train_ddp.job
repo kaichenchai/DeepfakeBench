@@ -32,6 +32,16 @@ torchrun --nproc_per_node=2 \
     --ddp
 
 
+# fake_only cf-constraint ablation run (real constraint disabled, beta=3 softplus)
+torchrun --nproc_per_node=2 \
+    training/train.py \
+    --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone_fake_only.yaml \
+    --train_dataset "FaceForensics++" \
+    --test_dataset "FaceForensics++" \
+    --run_suffix clip_counterfactual_new_loss \
+    --ddp
+
+
 # Clean up local temp directory
 rm -rf "$TMPDIR"
 
