@@ -1,0 +1,25 @@
+#!/bin/bash
+#rj name=clip-counterfactual
+#rj queue=curtin_eecms
+#rj runtime=10
+#rj logdir=logs/slurm
+#rj priority=550
+#rj features=a100
+
+# Bash Strict Mode
+set -euo pipefail
+
+# Activate virtual environment managed by uv
+source .venv/bin/activate
+
+# Redirect multiprocessing temp dir to local storage to avoid
+# "Device or resource busy" errors on Lustre during worker cleanup
+export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}
+mkdir -p "$TMPDIR"
+
+python eval/reformulate-cf-loss/probe_cos_sim.py \
+        --config training/config/detector/effort_ce_masked_counterfactual_backbone.yaml \
+        --weights logs/training/effort_ce_masked_counterfactual_backbone_effort_custom_2026-08-23-02-45-41/final/ckpt_final.pth \
+        --dataset FaceForensics++ \
+        --n_probe 1000 \
+        --out_dir eval/reformulate-cf-loss/output
