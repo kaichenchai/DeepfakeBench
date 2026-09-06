@@ -1,5 +1,5 @@
 #!/bin/bash
-#rj name=clip-counterfactual
+#rj name=eval
 #rj queue=curtin_eecms
 #rj runtime=10
 #rj logdir=logs/slurm
