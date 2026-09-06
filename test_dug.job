@@ -19,8 +19,8 @@ TRAINING_DIR="./logs/training"
 
 # 35 runs: 7 model groups x 5 seeds (256, 1024, 1234, 2048, 9999)
 PAIRS=(
-    "effort_ce_masked_counterfactual_backbone.yaml|effort_ce_masked_counterfactual_backbone_effort_custom_clip_counterfactual_2026-09-03-23-14-11"
-    "effort_ce_masked_counterfactual_backbone_4.yaml|effort_ce_masked_counterfactual_backbone_4_effort_custom_clip_counterfactual_2026-09-04-02-07-38"                                    # seed 1024
+    "effort_ce_masked_counterfactual_backbone.yaml|effort_ce_masked_counterfactual_backbone_effort_custom_clip_counterfactual_new_loss_2026-09-05-12-42-51"
+    "effort_ce_masked_counterfactual_backbone_kl_decision.yaml|effort_ce_masked_counterfactual_backbone_kl_decision_effort_custom_clip_counterfactual_new_loss_2026-09-05-13-12-11"
  )
 
 
