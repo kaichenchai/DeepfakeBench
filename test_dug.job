@@ -17,10 +17,9 @@
 CFG_DIR="./training/config/detector"
 TRAINING_DIR="./logs/training"
 
-# 35 runs: 7 model groups x 5 seeds (256, 1024, 1234, 2048, 9999)
 PAIRS=(
-    "effort_ce_masked_counterfactual_backbone.yaml|effort_ce_masked_counterfactual_backbone_effort_custom_clip_counterfactual_new_loss_2026-09-05-12-42-51"
-    "effort_ce_masked_counterfactual_backbone_kl_decision.yaml|effort_ce_masked_counterfactual_backbone_kl_decision_effort_custom_clip_counterfactual_new_loss_2026-09-05-13-12-11"
+    "effort_ce_kl_decision.yaml|effort_ce_kl_decision_effort_custom_clip_counterfactual_2026-09-06-23-46-33-09-05-12-42-51"
+    "effort_ce_masked_counterfactual_backbone_fake_only.yaml|effort_ce_masked_counterfactual_backbone_fake_only_effort_custom_clip_counterfactual_new_loss_2026-09-07-02-16-07-09-05-13-12-11"
  )
 
 
