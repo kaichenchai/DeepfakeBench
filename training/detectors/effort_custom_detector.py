@@ -51,11 +51,18 @@ class Effort_Custom_Detector(AbstractDetector):
 
         self.head = nn.Linear(1024, 2)
         self.loss_func = nn.CrossEntropyLoss()
+        # Used by the real branch of get_masked_counterfactual_backbone_loss.
+        self.mse_loss_func = nn.MSELoss()
         self.prob, self.label = [], []
         self.correct, self.total = 0, 0
         # Per-batch cache for the (frozen) counterfactual backbone features,
         # shared by all auxiliary losses that need them. Invalidated in forward().
         self.cf_features = None
+        # Per-batch cache for the individual real / fake components of the
+        # masked counterfactual backbone loss, populated by
+        # get_masked_counterfactual_backbone_loss for separate logging.
+        self.cf_real_loss = None
+        self.cf_fake_loss = None
 
     def build_backbone(self, config, clip_model=None):
         # ViT-L/14 224*224
@@ -173,7 +180,9 @@ class Effort_Custom_Detector(AbstractDetector):
         enable_real_constraint = loss_cfg.get("enable_real_constraint", True)
         enable_fake_constraint = loss_cfg.get("enable_fake_constraint", True)
 
-        counterfactual_loss = torch.tensor(0.0, device=next(self.parameters()).device)
+        device = next(self.parameters()).device
+        real_part = torch.tensor(0.0, device=device)
+        fake_part = torch.tensor(0.0, device=device)
         
         if enable_real_constraint and mask_real.sum() > 0:
             # Force features to be identical for real images, preserving both direction and magnitude
@@ -185,7 +194,7 @@ class Effort_Custom_Detector(AbstractDetector):
             # This helps to try and align the scale with cosine similarity
             # The epsilon prevents division by zero, is a pretty standard value also used by adam etc.
             scale = (cf_real.norm(p=2, dim=-1)**2).mean().detach() + 1e-8
-            counterfactual_loss = counterfactual_loss + (mse / scale)
+            real_part = real_part + (mse / scale)
             
         if enable_fake_constraint and mask_fake.sum() > 0:
             # For fake images: calculate cosine similarity along the feature dimension
@@ -196,9 +205,14 @@ class Effort_Custom_Detector(AbstractDetector):
             # Approximates relu (so negative/zero similarity is ~ignored) while still being
             # C^inf smooth (continuous, non-zero gradient) and avoiding relu's hard kink.
             beta = 3.0
-            counterfactual_loss = counterfactual_loss + F.softplus(beta * cos_sim).mean() / beta
-            
-        return counterfactual_loss
+            fake_part = fake_part + F.softplus(beta * cos_sim).mean() / beta
+
+        # Cache the individual (unscaled) components so get_losses can log them
+        # separately alongside the aggregated loss.
+        self.cf_real_loss = real_part.detach()
+        self.cf_fake_loss = fake_part.detach()
+
+        return real_part + fake_part
     
     def get_kl_decision_loss(self, data_dict: dict, pred_dict: dict) -> torch.Tensor:
         # Decision-level counterfactual loss: for fake images only, push the
@@ -235,6 +249,8 @@ class Effort_Custom_Detector(AbstractDetector):
             'weight_loss': torch.tensor(0.0, device=pred.device).detach(),
             'orthogonal_loss': torch.tensor(0.0, device=pred.device).detach(),
             'masked_counterfactual_backbone_loss': torch.tensor(0.0, device=pred.device).detach(),
+            'masked_counterfactual_backbone_real_loss': torch.tensor(0.0, device=pred.device).detach(),
+            'masked_counterfactual_backbone_fake_loss': torch.tensor(0.0, device=pred.device).detach(),
             'kl_decision_loss': torch.tensor(0.0, device=pred.device).detach(),
         }
         
@@ -267,6 +283,15 @@ class Effort_Custom_Detector(AbstractDetector):
                     key = f"{loss_name}_loss"
                     if key in dynamic_losses:
                         dynamic_losses[key] = scaled_loss.detach()
+
+                    # Log the real / fake components of the counterfactual
+                    # backbone loss individually. The cached values are raw
+                    # (pre-lambda) components produced by the loss method.
+                    if loss_name == 'masked_counterfactual_backbone':
+                        if self.cf_real_loss is not None:
+                            dynamic_losses['masked_counterfactual_backbone_real_loss'] = lambda_val * self.cf_real_loss
+                        if self.cf_fake_loss is not None:
+                            dynamic_losses['masked_counterfactual_backbone_fake_loss'] = lambda_val * self.cf_fake_loss
 
         # masking for real and fake classification loss
         mask_real = label == 0

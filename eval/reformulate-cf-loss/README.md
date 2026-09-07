@@ -11,7 +11,7 @@ exploiting a free region at `cos_sim < 0`.
 |------|---------|
 | `probe_cos_sim.py` | Probes **fake** samples, histograms `cos_sim` vs `cf_features` (confirms the `relu` free-region hypothesis). |
 | `fake_loss_only_probe_real_image_similarity.py` | Probes **real** samples, histograms `cos_sim` and `MSE` vs `cf_features` for the fake-only-loss checkpoint. |
-| `effort_custom_detector_probe.py` | Self-contained copy of `training/detectors/effort_custom_detector.py` that adds `compute_cos_sim()`, `compute_mse()`, `compute_normalized_mse()` (registers as `effort_custom_probe`). |
+| `effort_custom_detector_probe.py` | Probe wrapper that **subclasses** `training/detectors/effort_custom_detector.py` and adds `compute_cos_sim()`, `compute_mse()`, `compute_normalized_mse()` (registers as `effort_custom_probe`). Automatically stays in sync with the newest training detector — no duplicate copy to maintain. |
 
 ## Usage
 

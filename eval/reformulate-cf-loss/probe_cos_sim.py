@@ -8,8 +8,11 @@ frozen counterfactual (pristine CLIP) pooler features.
 
 The old loss ``F.relu(cos_sim)`` is free for ``cos_sim <= 0`` (zero loss, zero
 gradient), so the model is free to push fake residuals to negative similarity
-at no cost. The new loss ``cos_sim ** 2`` has no such free region, which is
-the leading explanation for the observed AUC/AP regression.
+at no cost. The replacements have no such free region — e.g. the
+temperature-scaled softplus ``F.softplus(beta * cos_sim) / beta`` used by the
+current ``masked_counterfactual_backbone`` fake branch, or the earlier
+``cos_sim ** 2`` — which is the leading explanation for the observed AUC/AP
+regression.
 
 What this script does
 ---------------------
