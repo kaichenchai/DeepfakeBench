@@ -18,8 +18,8 @@ export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}
 mkdir -p "$TMPDIR"
 
 python eval/reformulate-cf-loss/probe_cos_sim.py \
-        --config training/config/detector/effort_ce_masked_counterfactual_backbone.yaml \
-        --weights logs/training/effort_ce_masked_counterfactual_backbone_effort_custom_2026-08-23-02-45-41/final/ckpt_final.pth \
+    --config training/config/detector/effort_ce_masked_counterfactual_backbone_fake_only.yaml \
+        --weights logs/training/effort_ce_masked_counterfactual_backbone_fake_only_effort_custom_clip_counterfactual_new_loss_2026-09-07-02-16-07/final/ckpt_final.pth \
         --dataset FaceForensics++ \
         --n_probe 1000 \
-        --out_dir eval/reformulate-cf-loss/output
+        --out_dir eval/reformulate-cf-loss/output_fake_only
