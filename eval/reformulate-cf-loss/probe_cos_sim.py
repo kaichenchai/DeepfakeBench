@@ -17,11 +17,12 @@ regression.
 What this script does
 ---------------------
 1. Loads a trained ``effort_custom`` checkpoint (the OLD-loss checkpoint).
-2. Probes ``n_probe`` fake samples from the requested dataset.
-3. For each fake sample, computes ``cos_sim = cosine_similarity(cf_features,
+2. Probes ``n_probe`` samples from the requested dataset, filtered by
+   ``--type`` (``real`` / ``fake`` / ``both``).
+3. For each sample, computes ``cos_sim = cosine_similarity(cf_features,
    pred_dict['feat'])`` — the exact quantity the loss acts on.
-4. Prints mean/std and the fraction with ``cos_sim < -0.1``, and saves a
-   histogram.
+4. Prints mean/std and the fraction with ``cos_sim < -0.1``, and saves one or
+   two histograms (overlaid when ``--type both``).
 
 Reading the result
 ------------------
@@ -29,12 +30,15 @@ Reading the result
   clustered near zero) CONFIRMS the hypothesis.
 * If most fake samples sit near ``cos_sim ~= 0``, the hypothesis is weaker and
   the AUC/AP regression likely has a different cause.
+* Comparing the real vs fake overlaid histograms (``--type both``) shows how
+  the two distributions separate under the learned pooler.
 
 Usage (run from the repo root so relative config paths resolve):
     python eval/reformulate-cf-loss/probe_cos_sim.py \
         --config training/config/detector/effort_ce_masked_counterfactual_backbone.yaml \
         --weights /path/to/old_loss_checkpoint.pth \
         --dataset Celeb-DF-v2 \
+        --type both \
         --n_probe 1000 \
         --out_dir eval/reformulate-cf-loss/output
 """
@@ -94,8 +98,16 @@ def parse_args():
         help="Dataset name to probe (e.g. Celeb-DF-v2, DFDC, UADFV).",
     )
     parser.add_argument(
+        "--type", type=str, default="fake",
+        choices=["real", "fake", "both"],
+        help="Which samples to probe: 'real', 'fake' or 'both'. When 'both' "
+             "is given, real and fake cosine similarities are collected "
+             "separately and plotted as two overlaid histograms "
+             "(default: fake).",
+    )
+    parser.add_argument(
         "--n_probe", type=int, default=1000,
-        help="Number of fake samples to collect (default: 1000).",
+        help="Number of samples per class to collect (default: 1000).",
     )
     parser.add_argument(
         "--batch_size", type=int, default=None,
@@ -172,13 +184,36 @@ def load_checkpoint_state_dict(path: str) -> dict:
 
 
 @torch.no_grad()
-def collect_fake_cos_sim(model, loader, device, n_probe):
-    """Run the model over the loader and collect cos_sim for fake samples."""
-    cos_sims = []
-    pbar = tqdm(loader, desc="Probing fake cos_sim", leave=True)
+def collect_cos_sim(model, loader, device, n_probe, data_type):
+    """Run the model over the loader and collect cos_sim per class.
+
+    Returns a tuple ``(cos_sims_real, cos_sims_fake)`` of numpy arrays. The
+    class(es) requested by ``data_type`` are populated up to ``n_probe`` each;
+    the class that was not requested is returned as an empty array.
+
+    Args:
+        data_type: one of 'real', 'fake' or 'both'.
+    """
+    need_real = data_type in ("real", "both")
+    need_fake = data_type in ("fake", "both")
+
+    cos_sims_real = []
+    cos_sims_fake = []
+    pbar = tqdm(loader, desc=f"Probing {data_type} cos_sim", leave=True)
+
+    def enough(arr):
+        return len(arr) >= n_probe
 
     for data_dict in pbar:
-        if len(cos_sims) >= n_probe:
+        # Stop once each requested class has reached n_probe. For 'both' we
+        # must keep going until BOTH classes are full.
+        if need_real and need_fake:
+            done = enough(cos_sims_real) and enough(cos_sims_fake)
+        elif need_real:
+            done = enough(cos_sims_real)
+        else:  # need_fake
+            done = enough(cos_sims_fake)
+        if done:
             break
 
         images = data_dict["image"].to(device)
@@ -193,17 +228,32 @@ def collect_fake_cos_sim(model, loader, device, n_probe):
 
         pred_dict = model(batch, inference=True)
         cos_sim = model.compute_cos_sim(batch, pred_dict)  # [batch_size]
+        cos_sim_np = cos_sim.cpu().numpy()
 
         mask_fake = labels == 1
-        if mask_fake.any():
-            cos_sims.extend(cos_sim[mask_fake].cpu().numpy().tolist())
-            pbar.set_postfix(n_fake=len(cos_sims))
+        mask_real = ~mask_fake
+        mask_fake_np = mask_fake.cpu().numpy()
+        mask_real_np = mask_real.cpu().numpy()
 
-    cos_sims = np.asarray(cos_sims[:n_probe], dtype=np.float64)
-    if cos_sims.size == 0:
-        raise RuntimeError("No fake samples collected — check the dataset name "
+        if need_real and mask_real.any():
+            cos_sims_real.extend(cos_sim_np[mask_real_np].tolist())
+        if need_fake and mask_fake.any():
+            cos_sims_fake.extend(cos_sim_np[mask_fake_np].tolist())
+        pbar.set_postfix(n_real=len(cos_sims_real), n_fake=len(cos_sims_fake))
+
+    cos_sims_real = np.asarray(cos_sims_real[:n_probe], dtype=np.float64)
+    cos_sims_fake = np.asarray(cos_sims_fake[:n_probe], dtype=np.float64)
+
+    if not need_real:
+        cos_sims_real = np.empty(0)
+    if not need_fake:
+        cos_sims_fake = np.empty(0)
+
+    if cos_sims_real.size == 0 and cos_sims_fake.size == 0:
+        raise RuntimeError("No samples collected — check the dataset name "
                            "and labels.")
-    return cos_sims
+
+    return cos_sims_real, cos_sims_fake
 
 
 def compute_stats(cos_sim):
@@ -220,25 +270,59 @@ def compute_stats(cos_sim):
     return stats
 
 
-def plot_histogram(cos_sim, stats, out_path):
+def plot_histogram(cos_sim_real, cos_sim_fake, stats_real, stats_fake,
+                   out_path, data_type):
+    """Plot cos_sim histogram(s). When ``data_type`` is 'both', the real and
+    fake distributions are overlaid on the same axes."""
+    COLOR_REAL = "#4C72B0"
+    COLOR_FAKE = "#DD8452"
+
     fig, ax = plt.subplots(figsize=(8, 5))
 
-    ax.hist(cos_sim, bins=60, color="#4C72B0", alpha=0.85, edgecolor="white")
+    if data_type == "both":
+        ax.hist(cos_sim_real, bins=60, color=COLOR_REAL, alpha=0.6,
+                edgecolor="white",
+                label=f"real (n={stats_real['n']}, mean={stats_real['mean']:.3f})")
+        ax.hist(cos_sim_fake, bins=60, color=COLOR_FAKE, alpha=0.6,
+                edgecolor="white",
+                label=f"fake (n={stats_fake['n']}, mean={stats_fake['mean']:.3f})")
+        ax.axvline(stats_real["mean"], color=COLOR_REAL, linestyle="--",
+                   linewidth=1.2)
+        ax.axvline(stats_fake["mean"], color=COLOR_FAKE, linestyle="--",
+                   linewidth=1.2)
+        title = (
+            f"Real vs fake counterfactual cos_sim (overlaid)\n"
+            f"real: n={stats_real['n']}, mean={stats_real['mean']:.3f}, "
+            f"std={stats_real['std']:.3f}\n"
+            f"fake: n={stats_fake['n']}, mean={stats_fake['mean']:.3f}, "
+            f"std={stats_fake['std']:.3f}, "
+            f"frac<-0.1={stats_fake['frac_lt_neg_01']:.3f}"
+        )
+    else:
+        is_fake = data_type == "fake"
+        cos_sims = cos_sim_fake if is_fake else cos_sim_real
+        stats = stats_fake if is_fake else stats_real
+        color = COLOR_FAKE if is_fake else COLOR_REAL
+        label = "Fake" if is_fake else "Real"
+        ax.hist(cos_sims, bins=60, color=color, alpha=0.85,
+                edgecolor="white", label=f"{label} samples")
+        ax.axvline(stats["mean"], color="green", linestyle="-", linewidth=1.2,
+                   label=f"mean = {stats['mean']:.3f}")
+        title = (
+            f"{label}-sample counterfactual cos_sim\n"
+            f"n={stats['n']}, mean={stats['mean']:.3f}, "
+            f"std={stats['std']:.3f}, "
+            f"frac<-0.1={stats['frac_lt_neg_01']:.3f}"
+        )
 
     ax.axvline(0.0, color="black", linestyle="--", linewidth=1.0,
                label="cos_sim = 0 (new-loss minimum)")
     ax.axvline(-0.1, color="red", linestyle=":", linewidth=1.2,
                label="cos_sim = -0.1 (negative-mass threshold)")
-    ax.axvline(stats["mean"], color="green", linestyle="-", linewidth=1.2,
-               label=f"mean = {stats['mean']:.3f}")
 
     ax.set_xlabel("cos_sim(full_features, cf_features)")
     ax.set_ylabel("count")
-    ax.set_title(
-        f"Fake-sample counterfactual cos_sim\n"
-        f"n={stats['n']}, mean={stats['mean']:.3f}, std={stats['std']:.3f}, "
-        f"frac<-0.1={stats['frac_lt_neg_01']:.3f}"
-    )
+    ax.set_title(title)
     ax.legend(loc="best")
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
@@ -275,38 +359,79 @@ def main():
     model.load_state_dict(state_dict)
     print(f"Weights loaded from {args.weights}")
 
-    cos_sim = collect_fake_cos_sim(model, loader, device, args.n_probe)
-    stats = compute_stats(cos_sim)
+    def print_summary(name, stats):
+        print("\n" + "=" * 60)
+        print(f"  {name} counterfactual cos_sim summary")
+        print("=" * 60)
+        for k, v in stats.items():
+            print(f"  {k:>16}: {v}")
+        print("=" * 60)
+        print(f"\n  frac with cos_sim < -0.1 : {stats['frac_lt_neg_01']:.4f}")
+        print(f"  frac with cos_sim <  0.0 : {stats['frac_lt_0']:.4f}")
 
-    print("\n" + "=" * 60)
-    print("  Fake-sample counterfactual cos_sim summary")
-    print("=" * 60)
-    for k, v in stats.items():
-        print(f"  {k:>16}: {v}")
-    print("=" * 60)
-    print(f"\n  frac with cos_sim < -0.1 : {stats['frac_lt_neg_01']:.4f}")
-    print(f"  frac with cos_sim <  0.0 : {stats['frac_lt_0']:.4f}")
+    def print_confirmation(stats):
+        if stats["frac_lt_neg_01"] > 0.10:
+            print("\n  [CONFIRMED] A real mass of fake samples sits at "
+                  "meaningfully negative cosine similarity.\n"
+                  "              -> the old relu(cos_sim) loss had a free "
+                  "region that cos_sim**2 does not.")
+        else:
+            print("\n  [NOT CONFIRMED] Most fake samples sit near cos_sim ~= 0. "
+                  "The regression likely has a different cause.")
 
-    if stats["frac_lt_neg_01"] > 0.10:
-        print("\n  [CONFIRMED] A real mass of fake samples sits at meaningfully "
-              "negative cosine similarity.\n"
-              "              -> the old relu(cos_sim) loss had a free region "
-              "that cos_sim**2 does not.")
-    else:
-        print("\n  [NOT CONFIRMED] Most fake samples sit near cos_sim ~= 0. The "
-              "regression likely has a different cause.")
+    cos_sim_real, cos_sim_fake = collect_cos_sim(
+        model, loader, device, args.n_probe, args.type
+    )
 
     os.makedirs(args.out_dir, exist_ok=True)
-    npy_path = os.path.join(args.out_dir, "cos_sim_fakes.npy")
-    png_path = os.path.join(args.out_dir, "cos_sim_fakes_histogram.png")
-    json_path = os.path.join(args.out_dir, "cos_sim_fakes_summary.json")
 
-    np.save(npy_path, cos_sim)
-    plot_histogram(cos_sim, stats, png_path)
-    with open(json_path, "w") as f:
-        json.dump(stats, f, indent=2)
+    saved = []
 
-    print(f"\nSaved:\n  {npy_path}\n  {png_path}\n  {json_path}")
+    if args.type == "both":
+        stats_real = compute_stats(cos_sim_real)
+        stats_fake = compute_stats(cos_sim_fake)
+
+        print_summary("Real-sample", stats_real)
+        print_summary("Fake-sample", stats_fake)
+        print_confirmation(stats_fake)
+
+        npy_real_path = os.path.join(args.out_dir, "cos_sim_reals.npy")
+        npy_fake_path = os.path.join(args.out_dir, "cos_sim_fakes.npy")
+        png_path = os.path.join(args.out_dir, "cos_sim_both_histogram.png")
+        json_path = os.path.join(args.out_dir, "cos_sim_both_summary.json")
+
+        np.save(npy_real_path, cos_sim_real)
+        np.save(npy_fake_path, cos_sim_fake)
+        plot_histogram(cos_sim_real, cos_sim_fake, stats_real, stats_fake,
+                       png_path, "both")
+        with open(json_path, "w") as f:
+            json.dump({"real": stats_real, "fake": stats_fake}, f, indent=2)
+
+        saved.extend([npy_real_path, npy_fake_path, png_path, json_path])
+    else:
+        stats = compute_stats(cos_sim_fake if args.type == "fake" else cos_sim_real)
+
+        label = "Fake" if args.type == "fake" else "Real"
+        print_summary(f"{label}-sample", stats)
+        if args.type == "fake":
+            print_confirmation(stats)
+
+        stem = "fakes" if args.type == "fake" else "reals"
+        npy_path = os.path.join(args.out_dir, f"cos_sim_{stem}.npy")
+        png_path = os.path.join(args.out_dir, f"cos_sim_{stem}_histogram.png")
+        json_path = os.path.join(args.out_dir, f"cos_sim_{stem}_summary.json")
+
+        cos_sims = cos_sim_fake if args.type == "fake" else cos_sim_real
+        np.save(npy_path, cos_sims)
+        plot_histogram(cos_sims, np.empty(0), stats, None, png_path, args.type)
+        with open(json_path, "w") as f:
+            json.dump(stats, f, indent=2)
+
+        saved.extend([npy_path, png_path, json_path])
+
+    print("\nSaved:")
+    for p in saved:
+        print(f"  {p}")
 
 
 if __name__ == "__main__":

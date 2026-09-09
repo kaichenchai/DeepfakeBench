@@ -22,4 +22,4 @@ python eval/reformulate-cf-loss/probe_cos_sim.py \
         --weights logs/training/effort_ce_masked_counterfactual_backbone_fake_only_effort_custom_clip_counterfactual_new_loss_2026-09-07-02-16-07/final/ckpt_final.pth \
         --dataset FaceForensics++ \
         --n_probe 1000 \
-        --out_dir eval/reformulate-cf-loss/output_fake_only
+        --out_dir eval/reformulate-cf-loss/output_real_only
