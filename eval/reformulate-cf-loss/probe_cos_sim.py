@@ -423,7 +423,10 @@ def main():
 
         cos_sims = cos_sim_fake if args.type == "fake" else cos_sim_real
         np.save(npy_path, cos_sims)
-        plot_histogram(cos_sims, np.empty(0), stats, None, png_path, args.type)
+        if args.type == "fake":
+            plot_histogram(np.empty(0), cos_sims, None, stats, png_path, args.type)
+        else:
+            plot_histogram(cos_sims, np.empty(0), stats, None, png_path, args.type)
         with open(json_path, "w") as f:
             json.dump(stats, f, indent=2)
 
