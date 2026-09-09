@@ -4,6 +4,7 @@ nohup.out
 *.whl
 *.pth
 /datasets/
+*.runtime_log
 
 */models--openai--clip-vit-large-patch14/*
 /logs/
