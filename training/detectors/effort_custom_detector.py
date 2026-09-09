@@ -185,17 +185,43 @@ class Effort_Custom_Detector(AbstractDetector):
         fake_part = torch.tensor(0.0, device=device)
         
         if enable_real_constraint and mask_real.sum() > 0:
-            # Force features to be identical for real images, preserving both direction and magnitude
+            # Real branch: make the detector features match the frozen
+            # counterfactual (pristine CLIP) features on real images.
+            #
+            # The formulation is selected by `real_loss_type` in the
+            # `masked_counterfactual_backbone` loss config:
+            #
+            #   relative_mse (default): per-sample squared distance normalised
+            #       by the per-sample squared norm of the cf features. This is
+            #       a unitless relative error that sits on a scale directly
+            #       comparable to the cosine-based fake branch, so the two
+            #       gradients are balanced at lambda ~ 1. The earlier
+            #       'normalized_mse' used element-wise MSE, which implicitly
+            #       divides by the 1024-d feature dim and left the real
+            #       gradient ~1000x too weak -> real loss drifted up.
+            #
+            #   normalized_mse: the old element-wise-MSE / batch-scale form
+            #       (kept for reproducibility of previous runs).
+            #
+            #   cosine: align real features in direction only (1 - cos_sim),
+            #       discarding magnitude.
             cf_real = cf_features[mask_real]
             pred_real = pred_dict['feat'][mask_real]
-            mse = self.mse_loss_func(cf_real, pred_real)
-            
-            # Normalize MSE by the squared L2 norm of the output from the counterfactual backbone
-            # This helps to try and align the scale with cosine similarity
-            # The epsilon prevents division by zero, is a pretty standard value also used by adam etc.
-            scale = (cf_real.norm(p=2, dim=-1)**2).mean().detach() + 1e-8
-            real_part = real_part + (mse / scale)
-            
+            real_loss_type = loss_cfg.get("real_loss_type", "relative_mse")
+
+            if real_loss_type == "cosine":
+                real_part = real_part + (
+                    1 - F.cosine_similarity(cf_real, pred_real, dim=-1)
+                ).mean()
+            elif real_loss_type == "normalized_mse":
+                mse = self.mse_loss_func(cf_real, pred_real)
+                scale = (cf_real.norm(p=2, dim=-1)**2).mean().detach() + 1e-8
+                real_part = real_part + (mse / scale)
+            else:  # relative_mse (default, scale-fixed)
+                d2 = ((cf_real - pred_real) ** 2).sum(dim=-1)
+                cf_norm2 = (cf_real ** 2).sum(dim=-1).detach() + 1e-8
+                real_part = real_part + (d2 / cf_norm2).mean()
+
         if enable_fake_constraint and mask_fake.sum() > 0:
             # For fake images: calculate cosine similarity along the feature dimension
             cos_sim = F.cosine_similarity(cf_features[mask_fake], pred_dict['feat'][mask_fake], dim=-1)

@@ -23,13 +23,12 @@ export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}
 mkdir -p "$TMPDIR"
 
 
-# fake_only cf-constraint ablation run (real constraint disabled, beta=3 softplus)
 torchrun --nproc_per_node=2 \
     training/train.py \
-    --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone_fake_only.yaml \
+    --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone_real_only.yaml \
     --train_dataset "FaceForensics++" \
     --test_dataset "FaceForensics++" \
-    --run_suffix clip_counterfactual_new_loss_piecewise \
+    --run_suffix clip_counterfactual_new_loss_relative_mse \
     --ddp
 
 # Clean up local temp directory
