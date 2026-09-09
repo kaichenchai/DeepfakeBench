@@ -19,7 +19,7 @@ mkdir -p "$TMPDIR"
 
 python eval/reformulate-cf-loss/probe_cos_sim.py \
     --config training/config/detector/effort_ce_masked_counterfactual_backbone_fake_only.yaml \
-        --weights logs/training/effort_ce_masked_counterfactual_backbone_fake_only_effort_custom_clip_counterfactual_new_loss_2026-09-07-02-16-07/final/ckpt_final.pth \
+        --weights logs/training/effort_ce_masked_counterfactual_backbone_fake_only_effort_custom_clip_counterfactual_new_loss_piecewise_2026-09-08-22-30-35/final/ckpt_final.pth \
         --dataset FaceForensics++ \
         --n_probe 1000 \
-        --out_dir eval/reformulate-cf-loss/output_real_only
+        --out_dir eval/reformulate-cf-loss/output_piecewise_fake_only
