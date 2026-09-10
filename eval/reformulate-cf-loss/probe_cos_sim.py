@@ -280,12 +280,25 @@ def plot_histogram(cos_sim_real, cos_sim_fake, stats_real, stats_fake,
     fig, ax = plt.subplots(figsize=(8, 5))
 
     if data_type == "both":
-        ax.hist(cos_sim_real, bins=60, color=COLOR_REAL, alpha=0.6,
-                edgecolor="white",
-                label=f"real (n={stats_real['n']}, mean={stats_real['mean']:.3f})")
-        ax.hist(cos_sim_fake, bins=60, color=COLOR_FAKE, alpha=0.6,
+        # Both histograms MUST share the same bin edges. With an integer
+        # `bins=60` each ax.hist call derives its own edges from its own data
+        # range; the real distribution is ~10x narrower than the fake one
+        # (std ~0.006 vs ~0.05), so its bars become sub-pixel-width, vanish
+        # behind the fake bars, and still stretch the y-axis to the real peak.
+        combined = np.concatenate([cos_sim_real, cos_sim_fake])
+        lo, hi = float(np.min(combined)), float(np.max(combined))
+        if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
+            lo, hi = -0.1, 1.0
+        shared_bins = np.linspace(lo, hi, 61)
+
+        # Draw fake first (filled), then real on top with a solid edge, so the
+        # narrow real distribution stays visible wherever the two overlap.
+        ax.hist(cos_sim_fake, bins=shared_bins, color=COLOR_FAKE, alpha=0.55,
                 edgecolor="white",
                 label=f"fake (n={stats_fake['n']}, mean={stats_fake['mean']:.3f})")
+        ax.hist(cos_sim_real, bins=shared_bins, color=COLOR_REAL, alpha=0.75,
+                edgecolor="white",
+                label=f"real (n={stats_real['n']}, mean={stats_real['mean']:.3f})")
         ax.axvline(stats_real["mean"], color=COLOR_REAL, linestyle="--",
                    linewidth=1.2)
         ax.axvline(stats_fake["mean"], color=COLOR_FAKE, linestyle="--",
