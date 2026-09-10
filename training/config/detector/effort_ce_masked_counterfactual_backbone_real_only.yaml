@@ -98,6 +98,7 @@ loss_functions:
     lambda: 1.0
     enable_real_constraint: true   # keep: force cf == pred features on REAL images (normalized MSE)
     enable_fake_constraint: false  # ablated: remove the cosine-similarity (orthogonality) constraint on FAKE images
+    real_loss_type: cosine
 
 # metric
 metric_scoring: auc   # metric for evaluation (auc, acc, eer, ap)
