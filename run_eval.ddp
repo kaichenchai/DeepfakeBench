@@ -17,10 +17,39 @@ source .venv/bin/activate
 export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}
 mkdir -p "$TMPDIR"
 
+# original relu
 python eval/reformulate-cf-loss/probe_cos_sim.py \
-    --config training/config/detector/effort_ce_masked_counterfactual_backbone.yaml \
-        --weights logs/training/effort_ce_masked_counterfactual_backbone_real_only_effort_custom_clip_counterfactual_new_loss_relative_mse_2026-09-10-00-09-13/final/ckpt_final.pth \
+    --config training/config/detector/effort_ce_masked_counterfactual_backbone_fake_only.yaml \
+        --weights logs/training/effort_ce_masked_counterfactual_backbone_fake_only_effort_custom_2026-08-31-19-09-05/final/ckpt_final.pth \
         --dataset FaceForensics++ \
         --n_probe 1000 \
         --type both \
-        --out_dir eval/reformulate-cf-loss/output_real_only_relative_mse
+        --out_dir eval/reformulate-cf-loss/both_hist/fake_only_relu
+
+# cos sq
+python eval/reformulate-cf-loss/probe_cos_sim.py \
+    --config training/config/detector/effort_ce_masked_counterfactual_backbone_fake_only.yaml \
+        --weights logs/training/effort_ce_masked_counterfactual_backbone_effort_custom_clip_counterfactual_new_loss_2026-09-05-12-42-51/final/ckpt_final.pth \
+        --dataset FaceForensics++ \
+        --n_probe 1000 \
+        --type both \
+        --out_dir eval/reformulate-cf-loss/both_hist/fake_only_cos_sq
+
+
+# softplus
+python eval/reformulate-cf-loss/probe_cos_sim.py \
+    --config training/config/detector/effort_ce_masked_counterfactual_backbone_fake_only.yaml \
+        --weights logs/training/effort_ce_masked_counterfactual_backbone_fake_only_effort_custom_clip_counterfactual_new_loss_2026-09-07-02-16-07/final/ckpt_final.pth \
+        --dataset FaceForensics++ \
+        --n_probe 1000 \
+        --type both \
+        --out_dir eval/reformulate-cf-loss/both_hist/fake_only_softplus
+
+# piecewise
+python eval/reformulate-cf-loss/probe_cos_sim.py \
+    --config training/config/detector/effort_ce_masked_counterfactual_backbone_fake_only.yaml \
+        --weights logs/effort_ce_masked_counterfactual_backbone_fake_only_effort_custom_clip_counterfactual_new_loss_piecewise_2026-09-08-22-30-35/final/ckpt_final.pth \
+        --dataset FaceForensics++ \
+        --n_probe 1000 \
+        --type both \
+        --out_dir eval/reformulate-cf-loss/both_hist/fake_only_piecewise

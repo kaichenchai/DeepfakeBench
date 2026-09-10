@@ -1,3 +1,0 @@
-2026-09-06T23:12:24+0800: == JOB START  NAME=clip-counterfactual QUEUE=curtin_eecms HOST=pnod2-15-17 DATE=Sun 06 Sep 2026 23:12:24 AWST JOBID=63176903 ARRAY_JOBID= TASK= DEPENDENCIES= ==
-2026-09-06T23:12:24+0800: /data/pe1/000scratch/slurm_tmpdir/20260906_job_63176903.jnD3/clip-counterfactual.OAoMER: line 13: .venv/bin/activate: No such file or directory
-2026-09-06T23:12:24+0800: == JOB END  STATUS=1 HOST=pnod2-15-17 DATE=Sun 06 Sep 2026 23:12:24 AWST RUNTIME=1 ==
