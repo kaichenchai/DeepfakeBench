@@ -55,11 +55,29 @@ mkdir -p "$TMPDIR"
 #         --out_dir eval/reformulate-cf-loss/both_hist/fake_only_piecewise
 
 
-# real-only cosine
+# # real-only cosine
+# python eval/reformulate-cf-loss/probe_cos_sim.py \
+#     --config training/config/detector/effort_ce_masked_counterfactual_backbone_real_only.yaml \
+#         --weights logs/training/effort_ce_masked_counterfactual_backbone_real_only_effort_custom_clip_counterfactual_new_loss_cosine_2026-09-10-21-38-56/final/ckpt_final.pth \
+#         --dataset FaceForensics++ \
+#         --n_probe 1000 \
+#         --type both \
+#         --out_dir eval/reformulate-cf-loss/both_hist/real_only_cosine
+
+# real only normalised mse
 python eval/reformulate-cf-loss/probe_cos_sim.py \
     --config training/config/detector/effort_ce_masked_counterfactual_backbone_real_only.yaml \
-        --weights logs/training/effort_ce_masked_counterfactual_backbone_real_only_effort_custom_clip_counterfactual_new_loss_cosine_2026-09-10-21-38-56/final/ckpt_final.pth \
+        --weights logs/training/effort_ce_masked_counterfactual_backbone_real_only_effort_custom_2026-08-31-16-05-24/final/ckpt_final.pth \
         --dataset FaceForensics++ \
         --n_probe 1000 \
         --type both \
-        --out_dir eval/reformulate-cf-loss/both_hist/real_only_cosine
+        --out_dir eval/reformulate-cf-loss/both_hist/real_only_norm_mse
+
+# original loss function (both)
+python eval/reformulate-cf-loss/probe_cos_sim.py \
+    --config training/config/detector/effort_ce_masked_counterfactual_backbone.yaml \
+        --weights logs/training/effort_ce_hsic_masked_counterfactual_backbone_effort_custom_seed_1024_2026-09-02-00-01-53/final/ckpt_final.pth \
+        --dataset FaceForensics++ \
+        --n_probe 1000 \
+        --type both \
+        --out_dir eval/reformulate-cf-loss/both_hist/original_loss
