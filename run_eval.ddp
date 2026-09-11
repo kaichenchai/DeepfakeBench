@@ -45,11 +45,21 @@ mkdir -p "$TMPDIR"
 #         --type both \
 #         --out_dir eval/reformulate-cf-loss/both_hist/fake_only_softplus
 
-# piecewise
+# # piecewise
+# python eval/reformulate-cf-loss/probe_cos_sim.py \
+#     --config training/config/detector/effort_ce_masked_counterfactual_backbone_fake_only.yaml \
+#         --weights logs/training/effort_ce_masked_counterfactual_backbone_fake_only_effort_custom_clip_counterfactual_new_loss_piecewise_2026-09-08-22-30-35/final/ckpt_final.pth \
+#         --dataset FaceForensics++ \
+#         --n_probe 1000 \
+#         --type both \
+#         --out_dir eval/reformulate-cf-loss/both_hist/fake_only_piecewise
+
+
+# real-only cosine
 python eval/reformulate-cf-loss/probe_cos_sim.py \
-    --config training/config/detector/effort_ce_masked_counterfactual_backbone_fake_only.yaml \
-        --weights logs/training/effort_ce_masked_counterfactual_backbone_fake_only_effort_custom_clip_counterfactual_new_loss_piecewise_2026-09-08-22-30-35/final/ckpt_final.pth \
+    --config training/config/detector/effort_ce_masked_counterfactual_backbone_real_only.yaml \
+        --weights logs/training/effort_ce_masked_counterfactual_backbone_real_only_effort_custom_clip_counterfactual_new_loss_cosine_2026-09-10-21-38-56/final/ckpt_final.pth \
         --dataset FaceForensics++ \
         --n_probe 1000 \
         --type both \
-        --out_dir eval/reformulate-cf-loss/both_hist/fake_only_piecewise
+        --out_dir eval/reformulate-cf-loss/both_hist/real_only_cosine
