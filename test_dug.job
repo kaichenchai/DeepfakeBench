@@ -18,7 +18,7 @@ CFG_DIR="./training/config/detector"
 TRAINING_DIR="./logs/training"
 
 PAIRS=(
-    "effort_ce_masked_counterfactual_backbone.yaml|effort_ce_masked_counterfactual_backbone_real_only_effort_custom_clip_counterfactual_new_loss_cosine_2026-09-10-21-38-56"
+    "effort_ce_masked_counterfactual_backbone_tunable.yaml|effort_ce_masked_counterfactual_backbone_effort_custom_clip_counterfactual_real_only_mse_norm_fixed_2026-09-12-19-39-03"
  )
 
 
