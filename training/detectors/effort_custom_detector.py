@@ -157,17 +157,6 @@ class Effort_Custom_Detector(AbstractDetector):
         return loss
     
     def get_masked_counterfactual_backbone_loss(self, data_dict: dict, pred_dict: dict) -> torch.Tensor:
-        # Unified cosine-based formulation applied directly on the 1024-d
-        # pooler features (before the head).
-        #
-        #   loss = y * cos^2 + (1 - y) * (1 - cos)
-        #
-        #   y = 0 (real): 1 - cos_sim  -> pull features toward perfect alignment
-        #   y = 1 (fake): cos_sim^2    -> push features toward orthogonality
-        #
-        # Both terms are bounded and on the same natural scale (no MSE, no
-        # feature-norm dependence). The label acts as a switch so each sample
-        # contributes only its own branch, and both feed one scalar.
         cf_features = self._get_cf_features(data_dict)
 
         mask_real = (data_dict['label'] == 0)
@@ -185,26 +174,6 @@ class Effort_Custom_Detector(AbstractDetector):
         fake_part = torch.tensor(0.0, device=device)
         
         if enable_real_constraint and mask_real.sum() > 0:
-            # Real branch: make the detector features match the frozen
-            # counterfactual (pristine CLIP) features on real images.
-            #
-            # The formulation is selected by `real_loss_type` in the
-            # `masked_counterfactual_backbone` loss config:
-            #
-            #   relative_mse (default): per-sample squared distance normalised
-            #       by the per-sample squared norm of the cf features. This is
-            #       a unitless relative error that sits on a scale directly
-            #       comparable to the cosine-based fake branch, so the two
-            #       gradients are balanced at lambda ~ 1. The earlier
-            #       'normalized_mse' used element-wise MSE, which implicitly
-            #       divides by the 1024-d feature dim and left the real
-            #       gradient ~1000x too weak -> real loss drifted up.
-            #
-            #   normalized_mse: the old element-wise-MSE / batch-scale form
-            #       (kept for reproducibility of previous runs).
-            #
-            #   cosine: align real features in direction only (1 - cos_sim),
-            #       discarding magnitude.
             cf_real = cf_features[mask_real]
             pred_real = pred_dict['feat'][mask_real]
             real_loss_type = loss_cfg.get("real_loss_type", "relative_mse")
@@ -217,17 +186,39 @@ class Effort_Custom_Detector(AbstractDetector):
                 mse = self.mse_loss_func(cf_real, pred_real)
                 scale = (cf_real.norm(p=2, dim=-1)**2).mean().detach() + 1e-8
                 real_part = real_part + (mse / scale)
-            else:  # relative_mse (default, scale-fixed)
+            elif real_loss_type == "relative_mse":
                 d2 = ((cf_real - pred_real) ** 2).sum(dim=-1)
                 cf_norm2 = (cf_real ** 2).sum(dim=-1).detach() + 1e-8
                 real_part = real_part + (d2 / cf_norm2).mean()
+            else:
+                raise ValueError(f"Unknown real_loss_type: {real_loss_type}")
 
         if enable_fake_constraint and mask_fake.sum() > 0:
-            # For fake images: calculate cosine similarity along the feature dimension
-            cos_sim = F.cosine_similarity(cf_features[mask_fake], pred_dict['feat'][mask_fake], dim=-1)
+            cf_fake = cf_features[mask_fake]
+            pred_fake = pred_dict['feat'][mask_fake]
+            fake_loss_type = loss_cfg.get("fake_loss_type", "relu")
             
-            eps = 0.05
-            fake_part = fake_part + torch.where(cos_sim > 0, cos_sim**2, eps * cos_sim**2).mean()
+            if fake_loss_type == "relu":
+                cos_sim = F.cosine_similarity(cf_fake, pred_fake, dim=-1)
+                fake_part = fake_part + F.relu(cos_sim).mean()
+            elif fake_loss_type == "softplus":
+                beta = loss_cfg.get("softplus_beta", 3.0)
+                cos_sim = F.cosine_similarity(cf_fake, pred_fake, dim=-1)
+                fake_part = fake_part + F.softplus(beta * cos_sim).mean() / beta
+            elif fake_loss_type == "cosine_sq":
+                cos_sim = F.cosine_similarity(cf_fake, pred_fake, dim=-1)
+                fake_part = fake_part + (cos_sim ** 2).mean()
+            elif fake_loss_type == "piecewise":
+                cos_sim = F.cosine_similarity(cf_fake, pred_fake, dim=-1)
+                eps = loss_cfg.get("piecewise_eps", 0.05)
+                fake_part = fake_part + torch.where(cos_sim > 0, cos_sim**2, eps * cos_sim**2).mean()
+            else:
+                raise ValueError(f"Unknown fake_loss_type: {fake_loss_type}")
+            
+        real_loss_scale = loss_cfg.get("real_loss_scale", 1.0)
+        fake_loss_scale = loss_cfg.get("fake_loss_scale", 1.0)
+        real_part = real_loss_scale * real_part
+        fake_part = fake_loss_scale * fake_part 
             
         # Cache the individual (unscaled) components so get_losses can log them
         # separately alongside the aggregated loss.
@@ -299,7 +290,10 @@ class Effort_Custom_Detector(AbstractDetector):
 
                     scaled_loss = lambda_val * loss_val
                     if backprop:
-                        overall_loss += scaled_loss
+                        # Out-of-place accumulation: `overall_loss` is initialised as
+                        # an alias of `cross_entropy_loss`, so an in-place `+=` (add_)
+                        # would overwrite the CE value that is logged below.
+                        overall_loss = overall_loss + scaled_loss
                     
                     # update dynamic losses dict for logging
                     key = f"{loss_name}_loss"
