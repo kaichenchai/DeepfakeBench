@@ -82,3 +82,17 @@ class Effort_Custom_Detector_Probe(Effort_Custom_Detector):
         mse = F.mse_loss(cf_features, pred_dict['feat'], reduction='none').mean(dim=-1)
         scale = (cf_features.norm(p=2, dim=-1) ** 2).mean().detach() + 1e-8
         return mse / scale
+
+    def compute_normalized_mse_fixed(self, data_dict: dict, pred_dict: dict) -> torch.Tensor:
+        # Mirror of the 'normalized_mse_fixed' real-loss branch in
+        # get_masked_counterfactual_backbone_loss: per-sample squared error
+        # (summed over the 1024-d feature dim, no 1/D factor) scaled by a single
+        # batch-level mean squared L2 norm of the counterfactual features:
+        #   d2    = ((cf - pred) ** 2).sum(dim=-1)
+        #   scale = (cf ** 2).sum(dim=-1).mean().detach() + 1e-8
+        #   return d2 / scale
+        # Reproduced per-sample so it can be compared directly with the loss.
+        cf_features = self._get_cf_features(data_dict)
+        d2 = ((cf_features - pred_dict['feat']) ** 2).sum(dim=-1)
+        scale = (cf_features ** 2).sum(dim=-1).mean().detach() + 1e-8
+        return d2 / scale

@@ -183,9 +183,34 @@ class Effort_Custom_Detector(AbstractDetector):
                     1 - F.cosine_similarity(cf_real, pred_real, dim=-1)
                 ).mean()
             elif real_loss_type == "normalized_mse":
+                # LEGACY (buggy): mixes a batch+dim-averaged numerator with a
+                # per-sample-summed denominator, leaving a spurious 1/D factor
+                # (D = feature dim), i.e. ~1024x weaker than intended. Kept only
+                # for reproducing older runs -- use 'normalized_mse_fixed'.
                 mse = self.mse_loss_func(cf_real, pred_real)
                 scale = (cf_real.norm(p=2, dim=-1)**2).mean().detach() + 1e-8
                 real_part = real_part + (mse / scale)
+            elif real_loss_type == "normalized_mse_fixed":
+                # Same idea as the legacy branch above, with the aggregation
+                # mismatch removed. With m_i = sum_d (cf_i - pred_i)_d^2:
+                #
+                #   legacy: mean_i(m_i) / (D * mean_i(||cf_i||^2))
+                #   fixed:  mean_i(m_i) /      mean_i(||cf_i||^2)
+                #
+                # The numerator `nn.MSELoss()` (reduction='mean') averages over
+                # the batch AND the D feature dims, while `scale` sums over the
+                # feature dim per sample and only averages over the batch, so
+                # the legacy quotient carries an extra 1/D. This branch divides
+                # a per-sample summed error (already summed over D) by a single
+                # batch-level scale, making the term dimensionless and O(1).
+                #
+                # Unlike 'relative_mse' (mean of per-sample ratios), the scale
+                # here is one batch-level scalar (ratio of means); the two
+                # coincide when the per-sample norms are equal, which is nearly
+                # the case for CLIP pooler features (post-LayerNorm).
+                d2 = ((cf_real - pred_real) ** 2).sum(dim=-1)
+                scale = (cf_real ** 2).sum(dim=-1).mean().detach() + 1e-8
+                real_part = real_part + (d2 / scale).mean()
             elif real_loss_type == "relative_mse":
                 d2 = ((cf_real - pred_real) ** 2).sum(dim=-1)
                 cf_norm2 = (cf_real ** 2).sum(dim=-1).detach() + 1e-8

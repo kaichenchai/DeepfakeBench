@@ -1,0 +1,176 @@
+# log dir 
+log_dir: ./logs
+
+run_name: effort_ce_masked_counterfactual_backbone
+
+# model setting
+pretrained: 'no need to provide this for the effort model'
+model_name: effort_custom   # model name
+backbone_name: vit  # backbone name
+
+#backbone setting
+backbone_config:
+  mode: original
+  num_classes: 2
+  inc: 3
+  dropout: false
+
+# dataset
+all_dataset: [FaceForensics++, FF-F2F, FF-DF, FF-FS, FF-NT, FaceShifter, DeepFakeDetection, Celeb-DF-v1, Celeb-DF-v2, DFDCP, DFDC, DeeperForensics-1.0, UADFV]
+train_dataset: [FaceForensics++]
+test_dataset: [FaceForensics++]
+
+compression: c23  # compression-level for videos
+train_batchSize: 64  # training batch size
+test_batchSize: 64  # test batch size
+workers: 8   # number of data loading workers
+frame_num: {'train': 8, 'test': 8}   # number of frames to use per video in training and testing
+resolution: 224   # resolution of output image to network
+with_mask: false   # whether to include mask information in the input
+with_landmark: false # whether to include facial landmark information in the input
+
+
+# data augmentation
+use_data_augmentation: true  # Add this flag to enable/disable data augmentation
+data_aug:
+  flip_prob: 0.5
+  rotate_prob: 0.5
+  rotate_limit: [-10, 10]
+  blur_prob: 0.5
+  blur_limit: [3, 7]
+  brightness_prob: 0.5
+  brightness_limit: [-0.1, 0.1]
+  contrast_limit: [-0.1, 0.1]
+  quality_lower: 40
+  quality_upper: 100
+
+# mean and std for normalization
+mean: [0.48145466, 0.4578275, 0.40821073]
+std: [0.26862954, 0.26130258, 0.27577711]
+
+# optimizer config
+optimizer:
+  # choose between 'adam' and 'sgd'
+  type: adam
+  adam:
+    lr: 0.0002  # learning rate
+    beta1: 0.9  # beta1 for Adam optimizer
+    beta2: 0.999 # beta2 for Adam optimizer
+    eps: 0.00000001  # epsilon for Adam optimizer
+    weight_decay: 0.0005  # weight decay for regularization
+    amsgrad: false
+  sgd:
+    lr: 0.0002  # learning rate
+    momentum: 0.9  # momentum for SGD optimizer
+    weight_decay: 0.0005  # weight decay for regularization
+
+# training config
+lr_scheduler: null   # learning rate scheduler
+nEpochs: 10   # number of epochs to train for
+start_epoch: 0   # manual epoch number (useful for restarts)
+save_epoch: 10   # interval epochs for saving models
+rec_iter: 100   # interval iterations for recording
+logdir: ./logs   # folder to output images and logs
+manualSeed: 1024   # manual seed for random number generation
+save_ckpt: true   # whether to save checkpoint
+save_feat: true   # whether to save features
+
+# number of trainable SVD ranks of the frozen CLIP ViT (architecture knob --
+# must match the checkpoint). Defaults to 1 when omitted.
+# svd_trainable_ranks: 4
+
+# loss function
+loss_func: cross_entropy   # loss function to use
+losstype: null
+
+# for supplementary loss functions implemented in the model
+loss_functions:
+  requires_counterfactual_backbone: true
+  selected: [masked_counterfactual_backbone]
+  orthogonal:
+    lambda: 1.0 
+  weight:
+    lambda: 1.0
+  hsic:
+    lambda: 1.0
+  counterfactual:
+    lambda: 1.0
+  masked_counterfactual:
+    lambda: 1.0
+
+  masked_counterfactual_backbone:
+    # Overall weight of this loss in `overall_loss`.
+    lambda: 1.0
+    # When false the loss is still computed and logged, but under no_grad:
+    # it never contributes to the backward pass / `overall_loss`.
+    backprop: true
+
+    # --- branch toggles -------------------------------------------------
+    # Which label subsets the loss acts on. Both default to true.
+    #   real_only: enable_real_constraint: true  / enable_fake_constraint: false
+    #   fake_only: enable_real_constraint: false / enable_fake_constraint: true
+    enable_real_constraint: true
+    enable_fake_constraint: false
+
+    # --- real branch (label == 0) ---------------------------------------
+    # Pull the detector's pooler features toward the frozen counterfactual
+    # (pristine CLIP) pooler features, averaged over the real samples.
+    #   relative_mse   : ||pred - cf||^2 / ||cf||^2  (default)
+    #                    = 1 + rho^2 - 2*rho*cos, i.e. ~2*(1 - cos) at rho ~ 1
+    #                    (rho = ||pred|| / ||cf||; cf is post-LayerNorm so rho ~ 1)
+    #   cosine         : 1 - cos_sim   -- direction only, discards magnitude,
+    #                    exactly half the value/gradient of relative_mse at rho = 1
+    #   normalized_mse_fixed : batch-mean squared error / batch-mean squared norm
+    #                    (ratio of means -- the 1/D factor of the legacy form is
+    #                    removed). Differs from relative_mse only in aggregation
+    #                    order, which is a few percent for near-equal norms.
+    #   normalized_mse : MSE(cf, pred) / mean(||cf||^2)  -- LEGACY/buggy: the
+    #                    numerator averages over the batch AND the 1024 feature
+    #                    dims while the denominator sums over the feature dim
+    #                    per sample, leaving a spurious 1/D (~1024x too weak).
+    #                    Kept only for reproducing old runs; prefer
+    #                    normalized_mse_fixed or relative_mse.
+    real_loss_type: normalized_mse_fixed  # real-only run: corrected batch-level norm
+
+    # --- fake branch (label == 1) ---------------------------------------
+    # Push the detector's pooler features away from the frozen counterfactual
+    # features, averaged over the fake samples. The variants do NOT target the
+    # same geometry:
+    #   relu      : relu(cos_sim)            -> satisfied by any cos_sim <= 0
+    #                                          (flat/zero-gradient free region)
+    #   cosine_sq : cos_sim^2                -> cos_sim -> 0 (orthogonal)
+    #   piecewise : cos_sim^2, times piecewise_eps on the cos_sim < 0 side
+    #                                        -> cos_sim -> 0 (orthogonal)
+    #   softplus  : softplus(beta*cos_sim)/beta
+    #                                        -> cos_sim -> -1 (ANTI-aligned;
+    #                                          monotone, never saturates)
+    fake_loss_type: relu
+
+    # Only used when fake_loss_type == 'softplus'. beta = 3.0 gives
+    # softplus(3*cos)/3, bounded in [ln(2)/3 ~ 0.231, softplus(3)/3 ~ 1.016].
+    # Larger beta -> closer to relu (sharper knee, lower floor).
+    softplus_beta: 3.0
+
+    # Only used when fake_loss_type == 'piecewise'. Multiplier applied to the
+    # loss where cos_sim < 0 (the original hard-coded value was 0.05).
+    # 1.0 makes it symmetric with cosine_sq.
+    piecewise_eps: 0.05
+
+    # --- per-branch rebalancing -----------------------------------------
+    # Multipliers applied to each branch BEFORE `lambda`, so the real/fake
+    # balance can be tuned without changing the total weight of the cf loss.
+    # Note: relative_mse is ~2x the cos-based branches per unit of angular
+    # error, and the fake branch is bounded in value while the real branch is
+    # not, so equal scales are not automatically an equal signal.
+    real_loss_scale: 1.0
+    fake_loss_scale: 1.0
+
+# metric
+metric_scoring: auc   # metric for evaluation (auc, acc, eer, ap)
+
+# cuda
+ngpu: 1   # number of GPUs to use
+cuda: true   # whether to use CUDA acceleration
+cudnn: true  # whether to use CuDNN for convolution operations
+
+save_avg: true
