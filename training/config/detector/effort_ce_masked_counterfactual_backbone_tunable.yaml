@@ -110,7 +110,7 @@ loss_functions:
     #   real_only: enable_real_constraint: true  / enable_fake_constraint: false
     #   fake_only: enable_real_constraint: false / enable_fake_constraint: true
     enable_real_constraint: true
-    enable_fake_constraint: false
+    enable_fake_constraint: true
 
     # --- real branch (label == 0) ---------------------------------------
     # Pull the detector's pooler features toward the frozen counterfactual
