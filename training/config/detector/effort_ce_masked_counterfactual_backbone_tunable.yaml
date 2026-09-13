@@ -130,7 +130,7 @@ loss_functions:
     #                    per sample, leaving a spurious 1/D (~1024x too weak).
     #                    Kept only for reproducing old runs; prefer
     #                    normalized_mse_fixed or relative_mse.
-    real_loss_type: normalized_mse_fixed  # real-only run: corrected batch-level norm
+    real_loss_type: normalised_mse  # real-only run: corrected batch-level norm
 
     # --- fake branch (label == 1) ---------------------------------------
     # Push the detector's pooler features away from the frozen counterfactual
@@ -162,7 +162,7 @@ loss_functions:
     # Note: relative_mse is ~2x the cos-based branches per unit of angular
     # error, and the fake branch is bounded in value while the real branch is
     # not, so equal scales are not automatically an equal signal.
-    real_loss_scale: 1.0
+    real_loss_scale: 10.0
     fake_loss_scale: 1.0
 
 # metric
