@@ -182,7 +182,7 @@ class Effort_Custom_Detector(AbstractDetector):
                 real_part = real_part + (
                     1 - F.cosine_similarity(cf_real, pred_real, dim=-1)
                 ).mean()
-            elif real_loss_type == "normalized_mse":
+            elif real_loss_type == "normalised_mse":
                 # LEGACY (buggy): mixes a batch+dim-averaged numerator with a
                 # per-sample-summed denominator, leaving a spurious 1/D factor
                 # (D = feature dim), i.e. ~1024x weaker than intended. Kept only
@@ -190,7 +190,7 @@ class Effort_Custom_Detector(AbstractDetector):
                 mse = self.mse_loss_func(cf_real, pred_real)
                 scale = (cf_real.norm(p=2, dim=-1)**2).mean().detach() + 1e-8
                 real_part = real_part + (mse / scale)
-            elif real_loss_type == "normalized_mse_fixed":
+            elif real_loss_type == "normalised_mse_fixed":
                 # Same idea as the legacy branch above, with the aggregation
                 # mismatch removed. With m_i = sum_d (cf_i - pred_i)_d^2:
                 #
