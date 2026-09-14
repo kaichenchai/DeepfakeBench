@@ -4,7 +4,7 @@
 #rj runtime=10
 #rj logdir=logs/slurm
 #rj priority=550
-#rj features=a100:2
+#rj features=a100
 
 # Bash Strict Mode
 set -euo pipefail
