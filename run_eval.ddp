@@ -5,6 +5,8 @@
 #rj logdir=logs/slurm
 #rj priority=550
 #rj features=a100
+#rj cpus=8
+#rj mem=64G
 #rj gpus=a100:1
 
 # Bash Strict Mode
