@@ -5,6 +5,7 @@
 #rj logdir=logs/slurm
 #rj priority=550
 #rj features=a100
+#rj gpus=a100:1
 
 # Bash Strict Mode
 set -euo pipefail
@@ -93,20 +94,20 @@ mkdir -p "$TMPDIR"
 #         --out_dir eval/reformulate-cf-loss/both_hist/real_only_norm_mse_fixed
 
 
-# # fixed normalised mse + relu (both)
-# python eval/reformulate-cf-loss/probe_cos_sim.py \
-#     --config training/config/detector/effort_ce_masked_counterfactual_backbone_mse_norm_fixed_relu.yaml \
-#         --weights logs/training/effort_ce_masked_counterfactual_backbone_effort_custom_clip_counterfactual_mse_norm_fixed_relu_2026-09-13-01-41-58/final/ckpt_final.pth \
-#         --dataset FaceForensics++ \
-#         --n_probe 1000 \
-#         --type both \
-#         --out_dir eval/reformulate-cf-loss/both_hist/fixed_normalised_mse_relu
-
-# original normalised mse * 10 scale + relu (both)
+# fixed normalised mse + relu (both)
 python eval/reformulate-cf-loss/probe_cos_sim.py \
-    --config training/config/detector/effort_ce_masked_counterfactual_backbone_mse_norm_10_relu.yaml \
-        --weights logs/training/effort_ce_masked_counterfactual_backbone_effort_custom_clip_counterfactual_mse_norm_10_scale_relu_2026-09-13-12-21-03/final/ckpt_final.pth \
+    --config training/config/detector/effort_ce_masked_counterfactual_backbone_mse_norm_fixed_relu.yaml \
+        --weights logs/training/effort_ce_masked_counterfactual_backbone_effort_custom_clip_counterfactual_mse_norm_fixed_relu_2026-09-13-01-41-58/final/ckpt_final.pth \
         --dataset FaceForensics++ \
         --n_probe 1000 \
         --type both \
-        --out_dir eval/reformulate-cf-loss/both_hist/original_normalised_mse_10_scale_relu
+        --out_dir eval/reformulate-cf-loss/both_hist/fixed_normalised_mse_relu
+
+# # original normalised mse * 10 scale + relu (both)
+# python eval/reformulate-cf-loss/probe_cos_sim.py \
+#     --config training/config/detector/effort_ce_masked_counterfactual_backbone_mse_norm_10_relu.yaml \
+#         --weights logs/training/effort_ce_masked_counterfactual_backbone_effort_custom_clip_counterfactual_mse_norm_10_scale_relu_2026-09-13-12-21-03/final/ckpt_final.pth \
+#         --dataset FaceForensics++ \
+#         --n_probe 1000 \
+#         --type both \
+#         --out_dir eval/reformulate-cf-loss/both_hist/original_normalised_mse_10_scale_relu
