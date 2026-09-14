@@ -25,10 +25,10 @@ mkdir -p "$TMPDIR"
 
 torchrun --nproc_per_node=2 \
     training/train.py \
-    --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone_mse_norm_10_relu.yaml \
+    --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone_mse_norm_fixed_relu_svd_16.yaml \
     --train_dataset "FaceForensics++" \
     --test_dataset "FaceForensics++" \
-    --run_suffix clip_counterfactual_mse_norm_10_scale_relu \
+    --run_suffix clip_counterfactual_mse_norm_fixed_relu_svd_16 \
     --ddp
 
 # Clean up local temp directory
