@@ -100,7 +100,7 @@ python eval/reformulate-cf-loss/probe_cos_sim.py \
         --dataset FaceForensics++ \
         --n_probe 1000 \
         --type both \
-        --out_dir eval/reformulate-cf-loss/both_hist/real_only_norm_mse_fixed
+        --out_dir eval/reformulate-cf-loss/both_hist/fixed_normalised_mse_relu
 
 # original normalised mse * 10 scale + relu (both)
 python eval/reformulate-cf-loss/probe_cos_sim.py \
@@ -109,4 +109,4 @@ python eval/reformulate-cf-loss/probe_cos_sim.py \
         --dataset FaceForensics++ \
         --n_probe 1000 \
         --type both \
-        --out_dir eval/reformulate-cf-loss/both_hist/real_only_norm_mse_fixed
+        --out_dir eval/reformulate-cf-loss/both_hist/original_normalised_mse_10_scale_relu
