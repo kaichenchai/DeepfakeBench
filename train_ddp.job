@@ -1,15 +1,59 @@
 #!/bin/bash
 #rj name=clip-counterfactual
 #rj queue=curtin_eecms
+#rj gpus=a100:2
+#rj nodes=1
+#rj taskspernode=1
+#rj cpus=*
+#rj mem=200G
 #rj runtime=10
 #rj logdir=logs/slurm
 #rj priority=550
 #rj features=a100
+#rj array=0-1
+
+
+TRAIN_DATASET="FaceForensics++"
+TEST_DATASET="FaceForensics++"
+
+CONFIGS=(
+    "./training/config/detector/effort_ce_masked_counterfactual_backbone_fake_only.yaml"
+    "./training/config/detector/effort_ce_masked_counterfactual_backbone_real_only.yaml"
+)
+
+RUN_SUFFIXES=(
+    "clip_counterfactual_relu"
+    "clip_counterfactual_mse_norm"
+)
 
 # Bash Strict Mode
 set -euo pipefail
 
-# Activate virtual environment managed by uv
+TASK_ID=${SLURM_ARRAY_TASK_ID:-0}
+N_CONFIGS=${#CONFIGS[@]}
+N_SUFFIXES=${#RUN_SUFFIXES[@]}
+
+if [ "$N_CONFIGS" -ne "$N_SUFFIXES" ]; then
+    echo "[job] CONFIGS ($N_CONFIGS) and RUN_SUFFIXES ($N_SUFFIXES) must be the same length — exiting"
+    exit 1
+fi
+
+if [ "$TASK_ID" -ge "$N_CONFIGS" ]; then
+    echo "[job] SLURM_ARRAY_TASK_ID=$TASK_ID out of range (max $((N_CONFIGS-1))) — exiting"
+    exit 0
+fi
+
+DETECTOR_CONFIG="${CONFIGS[$TASK_ID]}"
+RUN_SUFFIX="${RUN_SUFFIXES[$TASK_ID]}"
+
+echo "=============================================="
+echo "  [job] Array Task $TASK_ID / $((N_CONFIGS-1))"
+echo "  [job] Config: $DETECTOR_CONFIG"
+echo "  [job] Run suffix: ${RUN_SUFFIX:-<none>}"
+echo "  [job] Started at: $(date)"
+echo "=============================================="
+
+# Activate virtual environment managed by uv (MUST be in repo root)
 source .venv/bin/activate
 
 # Load environment variables (wandb API key, etc.)
@@ -19,27 +63,24 @@ fi
 
 # Redirect multiprocessing temp dir to local storage to avoid
 # "Device or resource busy" errors on Lustre during worker cleanup
-export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}
+export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}
 mkdir -p "$TMPDIR"
 
+# Build the optional suffix flag so an empty entry doesn't pass a stray arg
+SUFFIX_ARGS=()
+if [ -n "$RUN_SUFFIX" ]; then
+    SUFFIX_ARGS=(--run_suffix "$RUN_SUFFIX")
+fi
 
 torchrun --nproc_per_node=2 \
     training/train.py \
-    --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone_fake_only.yaml \
-    --train_dataset "FaceForensics++" \
-    --test_dataset "FaceForensics++" \
-    --run_suffix "clip_counterfactual_relu" \
-    --ddp
-
-torchrun --nproc_per_node=2 \
-    training/train.py \
-    --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone_real_only.yaml \
-    --train_dataset "FaceForensics++" \
-    --test_dataset "FaceForensics++" \
-    --run_suffix "clip_counterfactual_mse_norm" \
+    --detector_path "$DETECTOR_CONFIG" \
+    --train_dataset "$TRAIN_DATASET" \
+    --test_dataset "$TEST_DATASET" \
+    ${SUFFIX_ARGS[@]+"${SUFFIX_ARGS[@]}"} \
     --ddp
 
 # Clean up local temp directory
 rm -rf "$TMPDIR"
 
-echo "Training job finished."
+echo "[job] Training ($DETECTOR_CONFIG) finished at $(date)."
