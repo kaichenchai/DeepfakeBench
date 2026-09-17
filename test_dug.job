@@ -131,7 +131,7 @@ python training/cross_dataset_test.py \
     --weights_path "$WEIGHTS" \
     --checkpoint_type final \
     --output_dir "$TASK_OUT_DIR" \
-    --wandb_name "cross_dataset_test_${CONFIG_RUN_NAME}_seed_${SEED}" \
+    --wandb_name "cross_dataset_test_${CONFIG_RUN_NAME}" \
     --wandb_extra_tags multiple_seeds_test
 
 # Rename this task's result JSON to a descriptive, collision-free name
