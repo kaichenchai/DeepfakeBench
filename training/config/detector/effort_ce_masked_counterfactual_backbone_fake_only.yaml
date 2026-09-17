@@ -96,8 +96,9 @@ loss_functions:
     lambda: 1.0
   masked_counterfactual_backbone:
     lambda: 1.0
-    enable_real_constraint: false  # ablated: remove the normalized-MSE constraint on REAL images
-    enable_fake_constraint: true   # keep: cosine-similarity (orthogonality) constraint on FAKE images
+    enable_real_constraint: false
+    enable_fake_constraint: true
+    fake_loss_type: relu
 
 # metric
 metric_scoring: auc   # metric for evaluation (auc, acc, eer, ap)
