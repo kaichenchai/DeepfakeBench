@@ -21,7 +21,7 @@ CFG_DIR="./training/config/detector"
 TRAINING_DIR="./logs/training"
 
 PAIRS=(
-    "effort_ce_masked_counterfactual_backbone_fake_only.yaml|effort_ce_masked_counterfactual_backbone_fake_only_effort_custom_clip_counterfactual_relu_2026-09-17-18-55-58"
+    "effort_ce_masked_counterfactual_backbone_fake_only_cosine_sq.yaml|effort_ce_masked_counterfactual_backbone_fake_only_cosine_sq_effort_custom_2026-09-14-23-39-17"
  )
 
 
@@ -130,7 +130,6 @@ python training/cross_dataset_test.py \
     --checkpoint_type final \
     --output_dir "$TASK_OUT_DIR" \
     --wandb_name "cross_dataset_test_${CONFIG_RUN_NAME}" \
-    --wandb_extra_tags multiple_seeds_test
 
 # Rename this task's result JSON to a descriptive, collision-free name
 RESULT_FILE="$(ls -1 "$TASK_OUT_DIR"/cross_dataset_results_*.json 2>/dev/null | head -n1)"
