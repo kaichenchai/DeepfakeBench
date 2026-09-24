@@ -21,7 +21,7 @@ CFG_DIR="./training/config/detector"
 TRAINING_DIR="./logs/training"
 
 PAIRS=(
-    "effort_ce_masked_counterfactual_backbone_fake_only_cosine_sq.yaml|effort_ce_masked_counterfactual_backbone_fake_only_cosine_sq_effort_custom_2026-09-14-23-39-17"
+    "effort_ce.yaml|effort_ce_effort_custom_2026-08-22-16-45-56"
  )
 
 
