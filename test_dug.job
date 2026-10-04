@@ -130,6 +130,7 @@ python training/cross_dataset_test.py \
     --checkpoint_type final \
     --output_dir "$TASK_OUT_DIR" \
     --wandb_name "cross_dataset_test_${CONFIG_RUN_NAME}" \
+    --wandb_extra_tags "multiple_seeds_test"
 
 # Rename this task's result JSON to a descriptive, collision-free name
 RESULT_FILE="$(ls -1 "$TASK_OUT_DIR"/cross_dataset_results_*.json 2>/dev/null | head -n1)"
