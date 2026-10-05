@@ -8,21 +8,33 @@
 #rj cpus=8
 #rj mem=64G
 #rj gpus=a100:1
-#rj array=0-0
+#rj array=0-9
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIG / WEIGHT PAIRS — each pair runs as its own ARRAY TASK in PARALLEL.
-# Uses final/ckpt_final.pth. Task index 0..34 maps to SLURM_ARRAY_TASK_ID.
+# Uses final/ckpt_final.pth. Task index 0..(TOTAL-1) maps to SLURM_ARRAY_TASK_ID,
+# so `#rj array` above MUST be `0-(TOTAL-1)` or trailing tasks are silently skipped.
 # Add/remove entries here to change what gets evaluated.
 # Each entry: "CONFIG|WEIGHTS_DIR"
 # ══════════════════════════════════════════════════════════════════════════════
 CFG_DIR="./training/config/detector"
 TRAINING_DIR="./logs/training"
 
-PAIRS=(
-    "effort_ce.yaml|effort_ce_effort_custom_2026-08-22-16-45-56"
- )
+PAIRS=(    # --- clip_cf pair, trained by train_seeds.job (seed 256..9999) ---
+    "effort_ce_masked_counterfactual_backbone_clip_cf.yaml|effort_ce_masked_counterfactual_backbone_clip_cf_effort_custom_seed_256_2026-10-04-23-07-15"
+    "effort_ce_masked_counterfactual_backbone_clip_cf.yaml|effort_ce_masked_counterfactual_backbone_clip_cf_effort_custom_seed_1024_2026-10-04-23-07-15"
+    "effort_ce_masked_counterfactual_backbone_clip_cf.yaml|effort_ce_masked_counterfactual_backbone_clip_cf_effort_custom_seed_1234_2026-10-04-23-07-15"
+    "effort_ce_masked_counterfactual_backbone_clip_cf.yaml|effort_ce_masked_counterfactual_backbone_clip_cf_effort_custom_seed_2048_2026-10-04-23-07-16"
+    "effort_ce_masked_counterfactual_backbone_clip_cf.yaml|effort_ce_masked_counterfactual_backbone_clip_cf_effort_custom_seed_9999_2026-10-04-23-07-24"
+
+    # --- hsic + clip_cf pair, trained by train_seeds.job (seed 256..9999) ---
+    "effort_ce_hsic_masked_counterfactual_backbone_clip_cf.yaml|effort_ce_hsic_masked_counterfactual_backbone_clip_cf_effort_custom_seed_256_2026-10-04-23-07-15"
+    "effort_ce_hsic_masked_counterfactual_backbone_clip_cf.yaml|effort_ce_hsic_masked_counterfactual_backbone_clip_cf_effort_custom_seed_1024_2026-10-04-23-07-22"
+    "effort_ce_hsic_masked_counterfactual_backbone_clip_cf.yaml|effort_ce_hsic_masked_counterfactual_backbone_clip_cf_effort_custom_seed_1234_2026-10-04-23-07-23"
+    "effort_ce_hsic_masked_counterfactual_backbone_clip_cf.yaml|effort_ce_hsic_masked_counterfactual_backbone_clip_cf_effort_custom_seed_2048_2026-10-04-23-09-09"
+    "effort_ce_hsic_masked_counterfactual_backbone_clip_cf.yaml|effort_ce_hsic_masked_counterfactual_backbone_clip_cf_effort_custom_seed_9999_2026-10-04-23-12-25"
+)
 
 
 TASK_ID=${SLURM_ARRAY_TASK_ID:-0}
