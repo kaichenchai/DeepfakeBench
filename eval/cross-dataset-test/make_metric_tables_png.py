@@ -86,7 +86,8 @@ def rank_models(values, higher_better):
     return best, second
 
 
-def render_metric(metric, data, datasets, out_path, show_avg=True):
+def render_metric(metric, data, datasets, out_path, show_avg=True,
+                  title_suffix="(mean $\\pm$ std over seeds)"):
     n_rows = len(MODELS)
     n_cols = len(datasets)
 
@@ -108,7 +109,7 @@ def render_metric(metric, data, datasets, out_path, show_avg=True):
 
     # ----- title -----
     ax.text((label_x + x0 + n_cols_total * col_w) / 2, title_y,
-            f"Cross-dataset {metric.upper()}  (mean $\\pm$ std over seeds)",
+            f"Cross-dataset {metric.upper()}  {title_suffix}",
             ha="center", va="center", fontsize=15, fontweight="bold")
 
     # ----- dataset header row -----
