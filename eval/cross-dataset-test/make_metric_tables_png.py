@@ -52,6 +52,8 @@ MODELS = [
     "ce_weight",
     "ce_orthogonal",
     "ce_orthogonal_weight",
+    "ce_masked_counterfactual_backbone_clip_cf",
+    "ce_hsic_masked_counterfactual_backbone_clip_cf",
 ]
 
 N_DECIMALS = 3  # decimal places for mean and std in the cells
