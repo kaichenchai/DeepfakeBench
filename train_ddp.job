@@ -1,5 +1,5 @@
 #!/bin/bash
-#rj name=effort-ce-hsic-16
+#rj name=effort-detector
 #rj queue=curtin_eecms
 #rj gpus=a100:2
 #rj nodes=1
@@ -16,7 +16,7 @@ TRAIN_DATASET="FaceForensics++"
 TEST_DATASET="FaceForensics++"
 
 CONFIGS=(
-    "effort_ce_masked_counterfactual_backbone_mse_norm_100"
+    "./training/config/detector/effort_ce_masked_counterfactual_backbone_mse_norm_100.yaml"
 )
 
 # Bash Strict Mode
