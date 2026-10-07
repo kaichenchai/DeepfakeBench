@@ -10,7 +10,7 @@
 #rj logdir=logs/slurm
 #rj priority=550
 #rj features=a100
-#rj array=0
+#rj array=0-4
 
 TRAIN_DATASET="FaceForensics++"
 TEST_DATASET="FaceForensics++"
