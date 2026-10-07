@@ -8,7 +8,7 @@
 #rj cpus=8
 #rj mem=64G
 #rj gpus=a100:1
-#rj array=0-9
+#rj array=0
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -21,19 +21,8 @@
 CFG_DIR="./training/config/detector"
 TRAINING_DIR="./logs/training"
 
-PAIRS=(    # --- clip_cf pair, trained by train_seeds.job (seed 256..9999) ---
-    "effort_ce_masked_counterfactual_backbone_clip_cf.yaml|effort_ce_masked_counterfactual_backbone_clip_cf_effort_custom_seed_256_2026-10-04-23-07-15"
-    "effort_ce_masked_counterfactual_backbone_clip_cf.yaml|effort_ce_masked_counterfactual_backbone_clip_cf_effort_custom_seed_1024_2026-10-04-23-07-15"
-    "effort_ce_masked_counterfactual_backbone_clip_cf.yaml|effort_ce_masked_counterfactual_backbone_clip_cf_effort_custom_seed_1234_2026-10-04-23-07-15"
-    "effort_ce_masked_counterfactual_backbone_clip_cf.yaml|effort_ce_masked_counterfactual_backbone_clip_cf_effort_custom_seed_2048_2026-10-04-23-07-16"
-    "effort_ce_masked_counterfactual_backbone_clip_cf.yaml|effort_ce_masked_counterfactual_backbone_clip_cf_effort_custom_seed_9999_2026-10-04-23-07-24"
-
-    # --- hsic + clip_cf pair, trained by train_seeds.job (seed 256..9999) ---
-    "effort_ce_hsic_masked_counterfactual_backbone_clip_cf.yaml|effort_ce_hsic_masked_counterfactual_backbone_clip_cf_effort_custom_seed_256_2026-10-04-23-07-15"
-    "effort_ce_hsic_masked_counterfactual_backbone_clip_cf.yaml|effort_ce_hsic_masked_counterfactual_backbone_clip_cf_effort_custom_seed_1024_2026-10-04-23-07-22"
-    "effort_ce_hsic_masked_counterfactual_backbone_clip_cf.yaml|effort_ce_hsic_masked_counterfactual_backbone_clip_cf_effort_custom_seed_1234_2026-10-04-23-07-23"
-    "effort_ce_hsic_masked_counterfactual_backbone_clip_cf.yaml|effort_ce_hsic_masked_counterfactual_backbone_clip_cf_effort_custom_seed_2048_2026-10-04-23-09-09"
-    "effort_ce_hsic_masked_counterfactual_backbone_clip_cf.yaml|effort_ce_hsic_masked_counterfactual_backbone_clip_cf_effort_custom_seed_9999_2026-10-04-23-12-25"
+PAIRS=(
+    "effort_ce_masked_counterfactual_backbone_mse_norm_10_relu.yaml|effort_ce_masked_counterfactual_backbone_effort_custom_clip_counterfactual_mse_norm_10_scale_relu_2026-09-13-12-21-03"
 )
 
 
@@ -142,7 +131,7 @@ python training/cross_dataset_test.py \
     --checkpoint_type final \
     --output_dir "$TASK_OUT_DIR" \
     --wandb_name "cross_dataset_test_${CONFIG_RUN_NAME}" \
-    --wandb_extra_tags "multiple_seeds_test"
+    # --wandb_extra_tags "multiple_seeds_test"
 
 # Rename this task's result JSON to a descriptive, collision-free name
 RESULT_FILE="$(ls -1 "$TASK_OUT_DIR"/cross_dataset_results_*.json 2>/dev/null | head -n1)"
