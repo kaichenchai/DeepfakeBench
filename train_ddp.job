@@ -10,17 +10,13 @@
 #rj logdir=logs/slurm
 #rj priority=550
 #rj features=a100
-#rj array=0-4
+#rj array=0
 
 TRAIN_DATASET="FaceForensics++"
 TEST_DATASET="FaceForensics++"
 
 CONFIGS=(
-    "./training/config/detector/effort_ce_hsic_16.yaml"
-    "./training/config/detector/effort_ce_hsic_masked_counterfactual_backbone_clip_cf_4.yaml"
-    "./training/config/detector/effort_ce_hsic_masked_counterfactual_backbone_clip_cf_8.yaml"
-    "./training/config/detector/effort_ce_hsic_masked_counterfactual_backbone_clip_cf_16.yaml"
-    "./training/config/detector/effort_ce_hsic_masked_counterfactual_backbone_clip_cf_32.yaml"
+    "effort_ce_masked_counterfactual_backbone_mse_norm_100"
 )
 
 # Bash Strict Mode
