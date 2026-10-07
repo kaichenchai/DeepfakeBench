@@ -108,7 +108,7 @@ mkdir -p "$TMPDIR"
 # original normalised mse * 10 scale + relu (both)
 python eval/reformulate-cf-loss/probe_cos_sim.py \
     --config training/config/detector/effort_ce_masked_counterfactual_backbone_mse_norm_10_relu.yaml \
-        --weights logs/training/effort_ce_masked_counterfactual_backbone_effort_custom_clip_counterfactual_mse_norm_10_scale_relu_2026-09-13-12-21-03/final/ckpt_final.pth \
+        --weights logs/training/effort_ce_masked_counterfactual_backbone_mse_norm_10_relu_effort_custom_clip_counterfactual_mse_norm_10_scale_relu_2026-09-14-22-06-44/final/ckpt_final.pth \
         --dataset FaceForensics++ \
         --n_probe 1000 \
         --type both \
