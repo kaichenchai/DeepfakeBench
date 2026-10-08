@@ -8,7 +8,7 @@
 #rj cpus=8
 #rj mem=64G
 #rj gpus=a100:1
-#rj array=0
+#rj array=0-5
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -22,7 +22,12 @@ CFG_DIR="./training/config/detector"
 TRAINING_DIR="./logs/training"
 
 PAIRS=(
-    "effort_ce_masked_counterfactual_backbone_mse_norm_fixed_relu.yaml|effort_ce_masked_counterfactual_backbone_effort_custom_clip_counterfactual_mse_norm_fixed_relu_2026-09-13-01-41-58"
+    "effort_ce_masked_counterfactual_backbone_mse_norm_100_relu.yaml|effort_ce_masked_counterfactual_backbone_mse_norm_100_relu_effort_custom_2026-10-07-23-34-26"
+    "effort_ce_hsic_16.yaml|effort_ce_hsic_16_effort_custom_2026-10-07-21-54-05"
+    "effort_ce_hsic_masked_counterfactual_backbone_clip_cf_4.yaml|effort_ce_hsic_masked_counterfactual_backbone_clip_cf_4_effort_custom_2026-10-07-21-54-04"
+    "effort_ce_hsic_masked_counterfactual_backbone_clip_cf_8.yaml|effort_ce_hsic_masked_counterfactual_backbone_clip_cf_8_effort_custom_2026-10-07-21-54-02"
+    "effort_ce_hsic_masked_counterfactual_backbone_clip_cf_16.yaml|effort_ce_hsic_masked_counterfactual_backbone_clip_cf_16_effort_custom_2026-10-07-21-54-05"
+    "effort_ce_hsic_masked_counterfactual_backbone_clip_cf_32.yaml|effort_ce_hsic_masked_counterfactual_backbone_clip_cf_32_effort_custom_2026-10-07-21-54-04"
 )
 
 
