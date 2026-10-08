@@ -105,11 +105,20 @@ mkdir -p "$TMPDIR"
 #         --type both \
 #         --out_dir eval/reformulate-cf-loss/both_hist/fixed_normalised_mse_relu
 
-# original normalised mse * 10 scale + relu (both)
+# # original normalised mse * 10 scale + relu (both)
+# python eval/reformulate-cf-loss/probe_cos_sim.py \
+#     --config training/config/detector/effort_ce_masked_counterfactual_backbone_mse_norm_10_relu.yaml \
+#         --weights logs/training/effort_ce_masked_counterfactual_backbone_mse_norm_10_relu_effort_custom_clip_counterfactual_mse_norm_10_scale_relu_2026-09-14-22-06-44/final/ckpt_final.pth \
+#         --dataset FaceForensics++ \
+#         --n_probe 1000 \
+#         --type both \
+#         --out_dir eval/reformulate-cf-loss/both_hist/original_normalised_mse_10_scale_relu
+
+# original normalised mse * 100 scale + relu (both)
 python eval/reformulate-cf-loss/probe_cos_sim.py \
-    --config training/config/detector/effort_ce_masked_counterfactual_backbone_mse_norm_10_relu.yaml \
-        --weights logs/training/effort_ce_masked_counterfactual_backbone_mse_norm_10_relu_effort_custom_clip_counterfactual_mse_norm_10_scale_relu_2026-09-14-22-06-44/final/ckpt_final.pth \
+    --config training/config/detector/effort_ce_masked_counterfactual_backbone_mse_norm_100_relu.yaml \
+        --weights logs/training/effort_ce_masked_counterfactual_backbone_mse_norm_100_relu_effort_custom_2026-10-07-23-34-26/final/ckpt_final.pth \
         --dataset FaceForensics++ \
         --n_probe 1000 \
         --type both \
-        --out_dir eval/reformulate-cf-loss/both_hist/original_normalised_mse_10_scale_relu
+        --out_dir eval/reformulate-cf-loss/both_hist/original_normalised_mse_100_scale_relu
