@@ -22,12 +22,9 @@ CFG_DIR="./training/config/detector"
 TRAINING_DIR="./logs/training"
 
 PAIRS=(
-    "effort_ce_masked_counterfactual_backbone_mse_norm_100_relu.yaml|effort_ce_masked_counterfactual_backbone_mse_norm_100_relu_effort_custom_2026-10-07-23-34-26"
-    "effort_ce_hsic_16.yaml|effort_ce_hsic_16_effort_custom_2026-10-07-21-54-05"
-    "effort_ce_hsic_masked_counterfactual_backbone_clip_cf_4.yaml|effort_ce_hsic_masked_counterfactual_backbone_clip_cf_4_effort_custom_2026-10-07-21-54-04"
-    "effort_ce_hsic_masked_counterfactual_backbone_clip_cf_8.yaml|effort_ce_hsic_masked_counterfactual_backbone_clip_cf_8_effort_custom_2026-10-07-21-54-02"
-    "effort_ce_hsic_masked_counterfactual_backbone_clip_cf_16.yaml|effort_ce_hsic_masked_counterfactual_backbone_clip_cf_16_effort_custom_2026-10-07-21-54-05"
-    "effort_ce_hsic_masked_counterfactual_backbone_clip_cf_32.yaml|effort_ce_hsic_masked_counterfactual_backbone_clip_cf_32_effort_custom_2026-10-07-21-54-04"
+    "effort_ce_hsic_4.yaml|effort_ce_hsic_4_effort_custom_2026-07-18-22-54-14"
+    "effort_ce_hsic_8.yaml|effort_ce_hsic_8_effort_custom_2026-07-18-23-07-16"
+    "effort_ce_hsic_32.yaml|effort_ce_hsic_32_effort_custom_2026-07-19-01-23-24"
 )
 
 
