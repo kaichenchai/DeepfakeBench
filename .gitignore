@@ -6,6 +6,8 @@ nohup.out
 /datasets/
 *.runtime_log
 
+/download/*
+
 */models--openai--clip-vit-large-patch14/*
 /logs/
 
