@@ -80,3 +80,81 @@ Outputs `real_image_similarity_histograms.png` (cos_sim + MSE subplots),
 `cos_sim_real.npy`, `mse_real.npy`, and `real_image_similarity_summary.json`.
 See the script's docstring for how to read the result (emergent property vs.
 "real == cf" not mattering for generalization).
+
+## Exporting `.npy` results for LaTeX/TikZ
+
+`npy_to_tikz.py` converts the raw arrays from a `both` probe into one shared-bin
+CSV file. By default, it writes the CSV beside `cos_sim_reals.npy`:
+
+```bash
+python3 eval/reformulate-cf-loss/npy_to_tikz.py \
+    --real eval/reformulate-cf-loss/both_hist/original_loss/cos_sim_reals.npy \
+    --fake eval/reformulate-cf-loss/both_hist/original_loss/cos_sim_fakes.npy
+```
+
+This creates `cos_sim_histogram.csv`, with columns
+`bin_left`, `bin_right`, `bin_center`, `real_count`, `fake_count`,
+`real_density`, and `fake_density`. Use `x=bin_left, y=real_count` or
+`x=bin_left, y=fake_count` in PGFPlots. To choose another filename, pass
+`--output /path/to/results.csv`.
+
+### Overlaid real/fake histograms in TikZ
+
+Add PGFPlots to your LaTeX preamble:
+
+```latex
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+```
+
+Then plot both distributions from the generated CSV. The `ybar interval`
+style uses `bin_left` and `bin_right` to preserve the shared histogram bins:
+
+```latex
+\begin{tikzpicture}
+\begin{axis}[
+    width=0.9\linewidth,
+    height=0.55\linewidth,
+    xlabel={Cosine similarity},
+    ylabel={Count},
+    legend style={at={(0.98,0.98)}, anchor=north east},
+    ymajorgrids,
+]
+\addplot+[
+    ybar interval,
+    fill=blue!65,
+    draw=white,
+    opacity=0.75,
+] table[
+    x=bin_left,
+    y=real_count,
+    col sep=comma,
+] {cos_sim_histogram.csv};
+\addlegendentry{Real}
+
+\addplot+[
+    ybar interval,
+    fill=orange!65,
+    draw=white,
+    opacity=0.75,
+] table[
+    x=bin_left,
+    y=fake_count,
+    col sep=comma,
+] {cos_sim_histogram.csv};
+\addlegendentry{Fake}
+
+\addplot[
+    black,
+    dashed,
+    mark=none,
+] coordinates {(0,0) (0,1000)};
+\addlegendentry{$\cos(\mathrm{sim})=0$}
+\end{axis}
+\end{tikzpicture}
+```
+
+Place the `.tex` file and `cos_sim_histogram.csv` in the same directory, or
+replace the CSV path in both `\addplot` commands. For normalized overlapping
+histograms, replace `real_count` and `fake_count` with `real_density` and
+`fake_density`, and change the y-axis label to `Density`.
