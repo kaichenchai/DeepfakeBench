@@ -132,7 +132,6 @@ def extract(
 ) -> dict[str, np.ndarray | str]:
     logits: list[np.ndarray] = []
     labels: list[np.ndarray] = []
-    image_paths: list[str] = []
     model.eval()
     with torch.inference_mode():
         for data_dict in tqdm(
@@ -155,7 +154,6 @@ def extract(
                 )
             logits.append(batch_logits)
             labels.append(data_dict["label"].detach().cpu().numpy().astype(np.int64))
-            image_paths.extend(str(path) for path in data_dict["image"])
 
     if not logits:
         raise RuntimeError(f"Dataset {dataset!r} produced no samples.")
@@ -164,7 +162,6 @@ def extract(
         "dataset": dataset,
         "logits": np.concatenate(logits),
         "labels": np.concatenate(labels),
-        "image_paths": np.asarray(image_paths),
     }
 
 
@@ -185,17 +182,15 @@ def write_outputs(
     for result in results:
         logits = result["logits"]
         labels = result["labels"]
-        image_paths = result["image_paths"]
         model_name = str(result["model"])
         dataset = str(result["dataset"])
         safe_dataset = dataset.replace("/", "_").replace(" ", "_")
         safe_model = model_name.replace("/", "_").replace(" ", "_")
         model_rows = []
-        for path, label, pair in zip(image_paths, labels, logits):
+        for label, pair in zip(labels, logits):
             row = {
                 "model": model_name,
                 "dataset": dataset,
-                "image": str(path),
                 "label": int(label),
                 "logit_real": float(pair[0]),
                 "logit_fake": float(pair[1]),
