@@ -20,12 +20,17 @@ source .venv/bin/activate
 export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}
 mkdir -p "$TMPDIR"
 
-python eval/pca/calculate_components.py \
-    --model-file eval/pca/effort_features.npy \
-    --threshold 90 \
-    --output eval/pca/effort_results.json \
+# python eval/pca/calculate_components.py \
+#     --model-file eval/pca/effort_features.npy \
+#     --threshold 90 \
+#     --output eval/pca/effort_results.json \
+
+# python eval/pca/calculate_components.py \
+#     --model-file eval/pca/hsic_cf_features.npy \
+#     --threshold 90 \
+#     --output eval/pca/hsic_cf_features.json \
 
 python eval/pca/calculate_components.py \
-    --model-file eval/pca/hsic_cf_features.npy \
+    --model-file eval/pca/vanilla_clip_features.npy \
     --threshold 90 \
-    --output eval/pca/hsic_cf_features.json \
+    --output eval/pca/vanilla_clip_features.json

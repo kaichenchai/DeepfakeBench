@@ -20,14 +20,20 @@ source .venv/bin/activate
 export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}
 mkdir -p "$TMPDIR"
 
-python eval/pca/extract_features.py \
-    --config training/config/detector/effort_ce_hsic_masked_counterfactual_backbone_clip_cf.yaml \
-    --weights logs/training/effort_ce_hsic_masked_counterfactual_backbone_clip_cf_effort_custom_seed_1024_2026-10-04-23-07-22/final/ckpt_final.pth \
-    --dataset FaceForensics++ \
-    --output hsic_cf_features.npy
+# python eval/pca/extract_features.py \
+#     --config training/config/detector/effort_ce_hsic_masked_counterfactual_backbone_clip_cf.yaml \
+#     --weights logs/training/effort_ce_hsic_masked_counterfactual_backbone_clip_cf_effort_custom_seed_1024_2026-10-04-23-07-22/final/ckpt_final.pth \
+#     --dataset FaceForensics++ \
+#     --output hsic_cf_features.npy
+
+# python eval/pca/extract_features.py \
+#     --config training/config/detector/effort_ce_orthogonal_weight.yaml \
+#     --weights logs/training/effort_ce_orthogonal_weight_effort_custom_2026-08-23-19-55-41/final/ckpt_final.pth \
+#     --dataset FaceForensics++ \
+#     --output effort_features.npy
 
 python eval/pca/extract_features.py \
-    --config training/config/detector/effort_ce_orthogonal_weight.yaml \
-    --weights logs/training/effort_ce_orthogonal_weight_effort_custom_2026-08-23-19-55-41/final/ckpt_final.pth \
+    --model-type vanilla-clip \
+    --config training/config/detector/effort.yaml \
     --dataset FaceForensics++ \
-    --output effort_features.npy
+    --output vanilla_clip_features.npy

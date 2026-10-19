@@ -19,6 +19,22 @@ not the model weights. For the `effort` detector this is the 1024-dimensional
 backbone representation. Use `--labels-output labels.npy` to save matching
 dataset labels.
 
+Vanilla CLIP can be extracted without a detector checkpoint. By default it
+loads the local ViT-L/14 weights from
+`models--openai--clip-vit-large-patch14/`:
+
+```bash
+python eval/pca/extract_features.py \
+    --model-type vanilla-clip \
+    --config training/config/detector/effort.yaml \
+    --dataset Celeb-DF-v2 \
+    --output vanilla_clip_features.npy
+```
+
+The `--config` is still required in vanilla-clip mode because it supplies the
+dataset paths, preprocessing, resolution, and test loader settings. Override
+the local CLIP directory with `--clip-path` if needed.
+
 Then calculate the PCA component count:
 
 ```bash

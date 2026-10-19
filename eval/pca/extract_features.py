@@ -6,6 +6,12 @@ Example:
         --weights /path/to/model.pth \
         --dataset Celeb-DF-v2 \
         --output features.npy
+
+    python eval/pca/extract_features.py \
+        --model-type vanilla-clip \
+        --config training/config/detector/effort.yaml \
+        --dataset Celeb-DF-v2 \
+        --output vanilla_clip_features.npy
 """
 
 from __future__ import annotations
@@ -20,6 +26,7 @@ import torch
 import torch.utils.data
 import yaml
 from tqdm import tqdm
+from transformers import CLIPModel
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -39,8 +46,26 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Extract model feature vectors for PCA analysis."
     )
-    parser.add_argument("--config", type=Path, required=True, help="Detector YAML config.")
-    parser.add_argument("--weights", type=Path, required=True, help="Model checkpoint.")
+    parser.add_argument(
+        "--model-type",
+        choices=("detector", "vanilla-clip"),
+        default="detector",
+        help="Extract from a trained detector or local vanilla CLIP (default: detector).",
+    )
+    parser.add_argument(
+        "--config", type=Path, required=True,
+        help="Detector YAML config, also used for dataset settings in vanilla-clip mode.",
+    )
+    parser.add_argument(
+        "--weights", type=Path,
+        help="Detector checkpoint. Not used by vanilla-clip mode.",
+    )
+    parser.add_argument(
+        "--clip-path",
+        type=Path,
+        default=REPO_ROOT / "models--openai--clip-vit-large-patch14",
+        help="Local Hugging Face CLIP directory for vanilla-clip mode.",
+    )
     parser.add_argument("--dataset", required=True, help="Dataset name to process.")
     parser.add_argument(
         "--output", type=Path, required=True, help="Output .npy feature matrix."
@@ -94,6 +119,16 @@ def load_weights(model: torch.nn.Module, weights_path: Path, device: torch.devic
         key.removeprefix("module."): value for key, value in checkpoint.items()
     }
     model.load_state_dict(state_dict, strict=True)
+
+
+class VanillaClipFeatures(torch.nn.Module):
+    def __init__(self, model_path: Path):
+        super().__init__()
+        self.backbone = CLIPModel.from_pretrained(model_path).vision_model
+
+    def forward(self, data_dict: dict, inference: bool = False) -> dict:
+        features = self.backbone(data_dict["image"])["pooler_output"]
+        return {"feat": features}
 
 
 def prepare_loader(config: dict, batch_size: int | None, workers: int | None):
@@ -157,9 +192,18 @@ def extract(
 
 def main() -> None:
     args = parse_args()
-    for path, name in ((args.config, "Config"), (args.weights, "Weights")):
+    for path, name in ((args.config, "Config"),):
         if not path.is_file():
             raise SystemExit(f"{name} file does not exist: {path}")
+    if args.model_type == "detector":
+        if args.weights is None:
+            raise SystemExit("--weights is required when --model-type is detector.")
+        if not args.weights.is_file():
+            raise SystemExit(f"Weights file does not exist: {args.weights}")
+    elif args.weights is not None:
+        raise SystemExit("--weights is only valid with --model-type detector.")
+    elif not args.clip_path.is_dir():
+        raise SystemExit(f"Local CLIP directory does not exist: {args.clip_path}")
     if args.max_samples is not None and args.max_samples < 1:
         raise SystemExit("--max-samples must be at least 1.")
     if args.batch_size is not None and args.batch_size < 1:
@@ -176,8 +220,11 @@ def main() -> None:
         ) else "cpu"
     )
 
-    model = DETECTOR[config["model_name"]](config).to(device)
-    load_weights(model, args.weights, device)
+    if args.model_type == "vanilla-clip":
+        model = VanillaClipFeatures(args.clip_path).to(device)
+    else:
+        model = DETECTOR[config["model_name"]](config).to(device)
+        load_weights(model, args.weights, device)
     features, labels = extract(model, prepare_loader(config, args.batch_size, args.workers),
                                device, args.max_samples)
 
