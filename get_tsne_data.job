@@ -1,15 +1,20 @@
 #!/bin/bash
-#rj name=tsne_eval
+#rj name=tsne_plots
 #rj queue=curtin_eecms
-#rj runtime=10
+#rj runtime=1
 #rj logdir=logs/slurm
 #rj priority=550
-#rj features=a100
 #rj cpus=8
-#rj mem=64G
-#rj gpus=a100:1
+#rj mem=16G
 # Keep this equal to 0-(number of entries in PAIRS below - 1).
 #rj array=0-2
+
+# Stage 2 of the t-SNE pipeline: run t-SNE on CPU from the feature caches
+# written by get_tsne_features.job, then write pgfplots-ready CSVs.
+# No GPU is requested; this also runs fine on a login node or locally.
+#
+#   rj get_tsne_features.job   # GPU: cache features + labels
+#   rj get_tsne_data.job       # CPU: t-SNE + CSV output
 
 # Bash Strict Mode
 set -euo pipefail
@@ -17,24 +22,22 @@ set -euo pipefail
 # Activate virtual environment managed by uv
 source .venv/bin/activate
 
-# Redirect multiprocessing temp dir to local storage to avoid
-# "Device or resource busy" errors on Lustre during worker cleanup
-export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID:-local}_${SLURM_ARRAY_TASK_ID:-0}
-mkdir -p "$TMPDIR"
+# Avoid BLAS/OpenMP oversubscription when t-SNE uses multiple workers.
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MODEL ENTRIES — each entry runs as its own ARRAY TASK in PARALLEL.
 # Keep `#rj array` above equal to 0-(number of entries - 1).
-# Format: "MODEL_TYPE|CONFIG|WEIGHTS|OUTPUT_DIR" (WEIGHTS is empty for vanilla-clip)
+# Format: "FEATURES_DIR|OUTPUT_DIR"
 # ══════════════════════════════════════════════════════════════════════════════
 PAIRS=(
-    "vanilla-clip|training/config/detector/effort.yaml||eval/tsne/data/vanilla_clip"
-    "detector|training/config/detector/effort_ce_orthogonal_weight.yaml|logs/training/effort_ce_orthogonal_weight_effort_custom_2026-08-23-19-55-41/final/ckpt_final.pth|eval/tsne/data/effort"
-    "detector|training/config/detector/effort_ce_hsic_masked_counterfactual_backbone_clip_cf.yaml|logs/training/effort_ce_hsic_masked_counterfactual_backbone_clip_cf_effort_custom_seed_1024_2026-10-04-23-07-22/final/ckpt_final.pth|eval/tsne/data/ce_hsic_cf"
+    "eval/tsne/features/vanilla_clip|eval/tsne/data/vanilla_clip"
+    "eval/tsne/features/effort|eval/tsne/data/effort"
+    "eval/tsne/features/ce_hsic_cf|eval/tsne/data/ce_hsic_cf"
 )
-# For the paper's pretrained EFFORT instead of the retrained baseline, replace
-# the second entry with:
-#   "detector|training/config/detector/effort.yaml|training/pretrained/effort_clip_L14_trainOn_FaceForensic.pth|eval/tsne/data/effort"
 
 TASK_ID=${SLURM_ARRAY_TASK_ID:-0}
 TOTAL=${#PAIRS[@]}
@@ -44,59 +47,32 @@ if [ "$TASK_ID" -ge "$TOTAL" ]; then
     exit 0
 fi
 
-IFS='|' read -r MODEL_TYPE CONFIG WEIGHTS OUTPUT_DIR <<< "${PAIRS[$TASK_ID]}"
+IFS='|' read -r FEATURES_DIR OUTPUT_DIR <<< "${PAIRS[$TASK_ID]}"
 
 echo "=============================================="
 echo "  [job] Task $TASK_ID / $((TOTAL-1))"
-echo "  [job] Model type: $MODEL_TYPE"
-echo "  [job] Config:     $CONFIG"
-echo "  [job] Weights:    ${WEIGHTS:-<none>}"
-echo "  [job] Output:     $OUTPUT_DIR"
-echo "  [job] Hostname:   $(hostname)"
-echo "  [job] Started:    $(date)"
+echo "  [job] Features: $FEATURES_DIR"
+echo "  [job] Output:   $OUTPUT_DIR"
+echo "  [job] Started:  $(date)"
 echo "=============================================="
 
-if [ ! -f "$CONFIG" ]; then
-    echo "[job] ERROR: config not found: $CONFIG"
-    exit 1
-fi
-if [ "$MODEL_TYPE" = "detector" ] && [ ! -f "$WEIGHTS" ]; then
-    echo "[job] ERROR: weights not found: $WEIGHTS"
-    exit 1
-fi
+for file in features.npy labels.npy; do
+    if [ ! -f "$FEATURES_DIR/$file" ]; then
+        echo "[job] ERROR: missing $FEATURES_DIR/$file — run get_tsne_features.job first"
+        exit 1
+    fi
+done
 
-# Fail fast if the allocated GPU is not visible to PyTorch.
-python - <<'PY'
-import torch
-print(
-    f"torch={torch.__version__} cuda={torch.version.cuda} "
-    f"available={torch.cuda.is_available()}",
-    flush=True,
-)
-if not torch.cuda.is_available():
-    raise SystemExit(
-        "CUDA is not available to PyTorch; refusing to run extraction on CPU."
-    )
-print(f"GPU: {torch.cuda.get_device_name(0)}", flush=True)
-PY
-
-ARGS=(
-    --model-type "$MODEL_TYPE"
-    --config "$CONFIG"
-    --dataset FaceForensics++
-    --device cuda
-    --output-dir "$OUTPUT_DIR"
-    --perplexity 30
-    --pca-components 50
-    --max-points 2000
-    --n-jobs 8
-    --seed 1024
+python eval/tsne/extract_tsne.py \
+    --features "$FEATURES_DIR" \
+    --output-dir "$OUTPUT_DIR" \
+    --perplexity 30 \
+    --pca-components 50 \
+    --max-points 100 \
+    --max-iter 500 \
+    --angle 0.8 \
+    --n-jobs 8 \
+    --seed 1024 \
     --balance
-)
-if [ "$MODEL_TYPE" = "detector" ]; then
-    ARGS+=(--weights "$WEIGHTS")
-fi
-
-python eval/tsne/extract_tsne.py "${ARGS[@]}"
 
 echo "[job] Task $TASK_ID finished at $(date)"

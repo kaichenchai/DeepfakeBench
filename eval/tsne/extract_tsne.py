@@ -4,7 +4,28 @@ The feature extraction is shared with ``eval/pca/extract_features.py`` so both
 evaluation scripts use the same dataset, preprocessing, and checkpoint logic.
 The real/fake ground-truth label is kept for every point.
 
-Outputs (inside ``--output-dir``):
+The pipeline can run in one pass or in two cached stages, so the expensive GPU
+forward passes run once and t-SNE can be re-run cheaply:
+
+    # stage 1 (GPU): extract and cache features + labels
+    python eval/tsne/extract_tsne.py \
+        --config training/config/detector/effort_ce_orthogonal_weight.yaml \
+        --weights /path/to/ckpt_final.pth \
+        --dataset FaceForensics++ \
+        --save-features eval/tsne/features/effort \
+        --extract-only
+
+    # stage 2 (CPU only): t-SNE from the cache
+    python eval/tsne/extract_tsne.py \
+        --features eval/tsne/features/effort \
+        --output-dir eval/tsne/data/effort
+
+Outputs inside ``--save-features``:
+    features.npy        -- ``(samples, dimensions)`` feature matrix
+    labels.npy          -- ``(samples,)`` ground truth, 0=real and 1=fake
+    extraction_meta.json -- config, checkpoint, and dataset provenance
+
+Outputs inside ``--output-dir``:
     tsne.csv  -- columns ``x,y,label,class`` (combined data)
     real.csv  -- same columns, label 0 only
     fake.csv  -- same columns, label 1 only
@@ -14,12 +35,6 @@ t-SNE is computed on every extracted sample; ``--max-points`` then
 downsamples the 2-D coordinates that are written for plotting.
 
 Example:
-    python eval/tsne/extract_tsne.py \
-        --config training/config/detector/effort_ce_orthogonal_weight.yaml \
-        --weights logs/training/effort_ce_orthogonal_weight_effort_custom_2026-08-23-19-55-41/final/ckpt_final.pth \
-        --dataset FaceForensics++ \
-        --output-dir eval/tsne/data/effort
-
     python eval/tsne/extract_tsne.py \
         --model-type vanilla-clip \
         --config training/config/detector/effort.yaml \
@@ -51,16 +66,10 @@ for path in (REPO_ROOT, TRAINING_DIR):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from detectors import DETECTOR
-from eval.pca.extract_features import (  # noqa: E402
-    VanillaClipFeatures,
-    extract,
-    load_config,
-    load_weights,
-    prepare_loader,
-)
-
 LABEL_NAMES = {0: "real", 1: "fake"}
+FEATURES_FILE = "features.npy"
+LABELS_FILE = "labels.npy"
+EXTRACTION_META_FILE = "extraction_meta.json"
 
 
 def parse_args() -> argparse.Namespace:
@@ -76,7 +85,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config",
         type=Path,
-        required=True,
         help="Detector YAML config, also used for dataset settings in vanilla-clip mode.",
     )
     parser.add_argument(
@@ -90,12 +98,35 @@ def parse_args() -> argparse.Namespace:
         default=REPO_ROOT / "models--openai--clip-vit-large-patch14",
         help="Local Hugging Face CLIP directory for vanilla-clip mode.",
     )
-    parser.add_argument("--dataset", required=True, help="Dataset name to process.")
+    parser.add_argument(
+        "--dataset",
+        help="Dataset name to process. Required unless --features is used.",
+    )
     parser.add_argument(
         "--output-dir",
         type=Path,
-        required=True,
         help="Directory for tsne.csv, real.csv, fake.csv, and meta.json.",
+    )
+    parser.add_argument(
+        "--save-features",
+        type=Path,
+        help=(
+            "Cache the extracted features and ground-truth labels in this "
+            "directory (features.npy, labels.npy, extraction_meta.json)."
+        ),
+    )
+    parser.add_argument(
+        "--extract-only",
+        action="store_true",
+        help="Stop after --save-features; do not run t-SNE.",
+    )
+    parser.add_argument(
+        "--features",
+        type=Path,
+        help=(
+            "Reuse cached features from this directory instead of running a "
+            "model. Makes --config, --weights, and --dataset unnecessary."
+        ),
     )
     parser.add_argument(
         "--batch-size", type=int, default=None, help="Override test_batchSize."
@@ -134,6 +165,12 @@ def parse_args() -> argparse.Namespace:
         help="t-SNE optimisation iterations (default: 1000).",
     )
     parser.add_argument(
+        "--angle",
+        type=float,
+        default=0.5,
+        help="Barnes-Hut accuracy/speed trade-off in [0, 1] (default: 0.5).",
+    )
+    parser.add_argument(
         "--seed", type=int, default=1024, help="Random seed (default: 1024)."
     )
     parser.add_argument(
@@ -157,17 +194,46 @@ def parse_args() -> argparse.Namespace:
 
 
 def validate_args(args: argparse.Namespace) -> None:
-    if not args.config.is_file():
-        raise SystemExit(f"Config file does not exist: {args.config}")
-    if args.model_type == "detector":
-        if args.weights is None:
-            raise SystemExit("--weights is required when --model-type is detector.")
-        if not args.weights.is_file():
-            raise SystemExit(f"Weights file does not exist: {args.weights}")
-    elif args.weights is not None:
-        raise SystemExit("--weights is only valid with --model-type detector.")
-    elif not args.clip_path.is_dir():
-        raise SystemExit(f"Local CLIP directory does not exist: {args.clip_path}")
+    if args.features is not None:
+        if not args.features.is_dir():
+            raise SystemExit(f"Feature directory does not exist: {args.features}")
+        for flag, value in (
+            ("--config", args.config),
+            ("--weights", args.weights),
+            ("--dataset", args.dataset),
+            ("--save-features", args.save_features),
+        ):
+            if value is not None:
+                raise SystemExit(f"{flag} cannot be combined with --features.")
+        if args.extract_only:
+            raise SystemExit("--extract-only cannot be combined with --features.")
+        if args.max_samples is not None:
+            raise SystemExit("--max-samples cannot be combined with --features.")
+        if args.batch_size is not None or args.workers is not None:
+            raise SystemExit(
+                "--batch-size and --workers cannot be combined with --features."
+            )
+    else:
+        if args.config is None:
+            raise SystemExit("--config is required unless --features is used.")
+        if args.dataset is None:
+            raise SystemExit("--dataset is required unless --features is used.")
+        if not args.config.is_file():
+            raise SystemExit(f"Config file does not exist: {args.config}")
+        if args.model_type == "detector":
+            if args.weights is None:
+                raise SystemExit("--weights is required when --model-type is detector.")
+            if not args.weights.is_file():
+                raise SystemExit(f"Weights file does not exist: {args.weights}")
+        elif args.weights is not None:
+            raise SystemExit("--weights is only valid with --model-type detector.")
+        elif not args.clip_path.is_dir():
+            raise SystemExit(f"Local CLIP directory does not exist: {args.clip_path}")
+        if args.extract_only and args.save_features is None:
+            raise SystemExit("--extract-only requires --save-features.")
+
+    if not args.extract_only and args.output_dir is None:
+        raise SystemExit("--output-dir is required unless --extract-only is used.")
     if args.max_samples is not None and args.max_samples < 1:
         raise SystemExit("--max-samples must be at least 1.")
     if args.batch_size is not None and args.batch_size < 1:
@@ -182,6 +248,8 @@ def validate_args(args: argparse.Namespace) -> None:
         raise SystemExit("--pca-components must be 0 or at least 2.")
     if args.max_iter < 250:
         raise SystemExit("--max-iter must be at least 250.")
+    if not 0 <= args.angle <= 1:
+        raise SystemExit("--angle must be between 0 and 1.")
     if args.n_jobs == 0 or args.n_jobs < -1:
         raise SystemExit("--n-jobs must be -1 or a positive integer.")
     if args.max_points < 0:
@@ -203,6 +271,16 @@ def get_device(requested: str):
 
 
 def extract_features(args: argparse.Namespace) -> tuple[np.ndarray, np.ndarray]:
+    # Imported here so ``--features`` mode stays lightweight (no torch/dataset).
+    from detectors import DETECTOR
+    from eval.pca.extract_features import (
+        VanillaClipFeatures,
+        extract,
+        load_config,
+        load_weights,
+        prepare_loader,
+    )
+
     config = load_config(args.config, args.dataset)
     device = get_device(args.device)
     print(f"Feature extraction device: {device}", flush=True)
@@ -227,6 +305,53 @@ def extract_features(args: argparse.Namespace) -> tuple[np.ndarray, np.ndarray]:
     return extract(model, loader, device, args.max_samples)
 
 
+def save_features(
+    output_dir: Path,
+    features: np.ndarray,
+    labels: np.ndarray,
+    metadata: dict[str, Any],
+) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    np.save(output_dir / FEATURES_FILE, features.astype(np.float32, copy=False))
+    np.save(output_dir / LABELS_FILE, labels.astype(np.int64, copy=False))
+    (output_dir / EXTRACTION_META_FILE).write_text(
+        json.dumps(metadata, indent=2) + "\n"
+    )
+
+
+def load_features(features_dir: Path) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
+    features_path = features_dir / FEATURES_FILE
+    labels_path = features_dir / LABELS_FILE
+
+    for path in (features_path, labels_path):
+        if not path.is_file():
+            raise SystemExit(f"Missing cached feature file: {path}")
+
+    features = np.load(features_path, allow_pickle=False)
+    labels = np.load(labels_path, allow_pickle=False)
+
+    if features.ndim != 2:
+        raise SystemExit(
+            f"{features_path} must be 2-D (samples, features); "
+            f"received shape {features.shape}."
+        )
+    if labels.ndim != 1:
+        raise SystemExit(
+            f"{labels_path} must be 1-D (samples,); received shape {labels.shape}."
+        )
+    if labels.shape[0] != features.shape[0]:
+        raise SystemExit(
+            f"Feature/label length mismatch: {features.shape[0]} rows in "
+            f"{features_path} but {labels.shape[0]} in {labels_path}."
+        )
+
+    meta_path = features_dir / EXTRACTION_META_FILE
+    metadata: dict[str, Any] = {}
+    if meta_path.is_file():
+        metadata = json.loads(meta_path.read_text())
+    return features, labels, metadata
+
+
 def build_tsne(args: argparse.Namespace) -> TSNE:
     kwargs: dict[str, Any] = {
         "n_components": 2,
@@ -235,6 +360,7 @@ def build_tsne(args: argparse.Namespace) -> TSNE:
         "init": "pca",
         "random_state": args.seed,
         "n_jobs": args.n_jobs,
+        "angle": args.angle,
     }
     # sklearn renamed n_iter to max_iter in 1.5.
     if "max_iter" in inspect.signature(TSNE).parameters:
@@ -346,9 +472,51 @@ def main() -> None:
     args = parse_args()
     validate_args(args)
 
-    start = time.time()
-    features, labels = extract_features(args)
-    print(f"Feature extraction finished in {time.time() - start:.1f}s", flush=True)
+    if args.features is not None:
+        features, labels, source = load_features(args.features)
+        print(
+            f"Loaded {features.shape[0]} samples with {features.shape[1]} "
+            f"features from {args.features}",
+            flush=True,
+        )
+        model_type = source.get("model_type")
+        config = source.get("config")
+        weights = source.get("weights")
+        dataset = source.get("dataset")
+    else:
+        start = time.time()
+        features, labels = extract_features(args)
+        print(
+            f"Feature extraction finished in {time.time() - start:.1f}s", flush=True
+        )
+        model_type = args.model_type
+        config = str(args.config)
+        weights = str(args.weights) if args.weights is not None else None
+        dataset = args.dataset
+
+        if args.save_features is not None:
+            save_features(
+                args.save_features,
+                features,
+                labels,
+                {
+                    "model_type": model_type,
+                    "config": config,
+                    "weights": weights,
+                    "dataset": dataset,
+                    "samples": int(features.shape[0]),
+                    "dimensions": int(features.shape[1]),
+                    "max_samples": args.max_samples,
+                    "random_state": args.seed,
+                },
+            )
+            print(
+                f"Cached features and labels in {args.save_features}",
+                flush=True,
+            )
+            if args.extract_only:
+                return
+
     unique_labels = np.unique(labels)
     unknown = sorted(set(unique_labels.tolist()) - LABEL_NAMES.keys())
     if unknown:
@@ -373,10 +541,11 @@ def main() -> None:
     }
 
     metadata = {
-        "model_type": args.model_type,
-        "config": str(args.config),
-        "weights": str(args.weights) if args.weights is not None else None,
-        "dataset": args.dataset,
+        "model_type": model_type,
+        "config": config,
+        "weights": weights,
+        "dataset": dataset,
+        "features_dir": str(args.features) if args.features is not None else None,
         "samples": int(features.shape[0]),
         "label_counts": label_counts,
         "output_samples": int(output_coords.shape[0]),
@@ -387,21 +556,22 @@ def main() -> None:
         "pca_components": pca_components,
         "perplexity": args.perplexity,
         "max_iter": args.max_iter,
+        "angle": args.angle,
         "random_state": args.seed,
         "kl_divergence": kl_divergence,
     }
     write_outputs(args.output_dir, output_coords, output_labels, metadata)
 
     print(f"Samples: {features.shape[0]} ({label_counts})")
-    print(
-        f"Plot points: {output_coords.shape[0]} ({output_label_counts})"
-    )
+    print(f"Plot points: {output_coords.shape[0]} ({output_label_counts})")
     print(f"Feature dimensions: {original_dimensions}")
     print(
         "t-SNE: "
         f"perplexity={args.perplexity:g}, "
         f"pca_components={pca_components}, "
-        f"max_iter={args.max_iter}, seed={args.seed}"
+        f"max_iter={args.max_iter}, "
+        f"angle={args.angle:g}, "
+        f"seed={args.seed}"
     )
     print(f"Data written to: {args.output_dir}")
 
