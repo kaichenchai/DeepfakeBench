@@ -19,7 +19,7 @@ export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID:-local}_${SLURM_ARRAY_TASK_ID:-0}
 mkdir -p "$TMPDIR"
 
 DATASETS=(
-    "FaceForensics++"
+    "DFDC"
 )
 DATASET="${DATASETS[${SLURM_ARRAY_TASK_ID:-0}]}"
 
