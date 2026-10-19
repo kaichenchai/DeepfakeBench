@@ -1,0 +1,26 @@
+{
+  "model_type": "detector",
+  "config": "training/config/detector/effort_ce_hsic_masked_counterfactual_backbone_clip_cf.yaml",
+  "weights": "logs/training/effort_ce_hsic_masked_counterfactual_backbone_clip_cf_effort_custom_seed_1024_2026-10-04-23-07-22/final/ckpt_final.pth",
+  "dataset": "FaceForensics++",
+  "features_dir": "eval/tsne/features/ce_hsic_cf",
+  "samples": 5600,
+  "label_counts": {
+    "real": 1120,
+    "fake": 4480
+  },
+  "output_samples": 500,
+  "output_label_counts": {
+    "real": 250,
+    "fake": 250
+  },
+  "max_points": 500,
+  "balance": true,
+  "original_dimensions": 1024,
+  "pca_components": 50,
+  "perplexity": 30.0,
+  "max_iter": 500,
+  "angle": 0.8,
+  "random_state": 1024,
+  "kl_divergence": 1.1987218856811523
+}

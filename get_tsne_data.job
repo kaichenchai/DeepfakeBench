@@ -68,7 +68,7 @@ python eval/tsne/extract_tsne.py \
     --output-dir "$OUTPUT_DIR" \
     --perplexity 30 \
     --pca-components 50 \
-    --max-points 100 \
+    --max-points 500 \
     --max-iter 500 \
     --angle 0.8 \
     --n-jobs 8 \

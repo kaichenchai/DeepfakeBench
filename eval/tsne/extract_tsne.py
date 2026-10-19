@@ -183,7 +183,7 @@ def parse_args() -> argparse.Namespace:
         "--max-points",
         type=int,
         default=100,
-        help="Maximum points written for plotting; 0 keeps all (default: 2000).",
+        help="Maximum points written for plotting; 0 keeps all (default: 100).",
     )
     parser.add_argument(
         "--balance",

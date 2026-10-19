@@ -1,0 +1,26 @@
+{
+  "model_type": "detector",
+  "config": "training/config/detector/effort_ce_orthogonal_weight.yaml",
+  "weights": "logs/training/effort_ce_orthogonal_weight_effort_custom_2026-08-23-19-55-41/final/ckpt_final.pth",
+  "dataset": "FaceForensics++",
+  "features_dir": "eval/tsne/features/effort",
+  "samples": 5600,
+  "label_counts": {
+    "real": 1120,
+    "fake": 4480
+  },
+  "output_samples": 500,
+  "output_label_counts": {
+    "real": 250,
+    "fake": 250
+  },
+  "max_points": 500,
+  "balance": true,
+  "original_dimensions": 1024,
+  "pca_components": 50,
+  "perplexity": 30.0,
+  "max_iter": 500,
+  "angle": 0.8,
+  "random_state": 1024,
+  "kl_divergence": 0.7206617593765259
+}
