@@ -1,0 +1,10 @@
+{
+  "model_type": "vanilla-clip",
+  "config": "training/config/detector/effort.yaml",
+  "weights": null,
+  "dataset": "FaceForensics++",
+  "samples": 5600,
+  "dimensions": 1024,
+  "max_samples": null,
+  "random_state": 1024
+}

@@ -12,7 +12,7 @@ nohup.out
 /logs/
 /eval/gradcam/data/
 # t-SNE feature caches are large and regenerable; the CSV plot data is tracked.
-/eval/tsne/features/
+# /eval/tsne/features/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

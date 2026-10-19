@@ -1,0 +1,10 @@
+{
+  "model_type": "detector",
+  "config": "training/config/detector/effort_ce_hsic_masked_counterfactual_backbone_clip_cf.yaml",
+  "weights": "logs/training/effort_ce_hsic_masked_counterfactual_backbone_clip_cf_effort_custom_seed_1024_2026-10-04-23-07-22/final/ckpt_final.pth",
+  "dataset": "FaceForensics++",
+  "samples": 5600,
+  "dimensions": 1024,
+  "max_samples": null,
+  "random_state": 1024
+}
