@@ -52,3 +52,6 @@ objects, the script first checks `features`, `feat`, `embeddings`, and
 The output includes the component count, retained variance, variance loss, and
 the per-component and cumulative explained-variance arrays. The printed
 `Components required` value is the bar value for a model in the plot.
+
+For 2-D t-SNE visualisations of the same detector features, see
+[`eval/tsne`](../tsne/README.md).

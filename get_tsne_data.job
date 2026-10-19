@@ -1,0 +1,63 @@
+#!/bin/bash
+#rj name=eval
+#rj queue=curtin_eecms
+#rj runtime=10
+#rj logdir=logs/slurm
+#rj priority=550
+#rj features=a100
+#rj cpus=8
+#rj mem=64G
+#rj gpus=a100:1
+
+# Bash Strict Mode
+set -euo pipefail
+
+# Activate virtual environment managed by uv
+source .venv/bin/activate
+
+# Redirect multiprocessing temp dir to local storage to avoid
+# "Device or resource busy" errors on Lustre during worker cleanup
+export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}
+mkdir -p "$TMPDIR"
+
+# Vanilla CLIP (no detector checkpoint)
+python eval/tsne/extract_tsne.py \
+    --model-type vanilla-clip \
+    --config training/config/detector/effort.yaml \
+    --dataset FaceForensics++ \
+    --output-dir eval/tsne/data/vanilla_clip \
+    --perplexity 30 \
+    --pca-components 50 \
+    --max-points 2000 \
+    --n-jobs 8 \
+    --seed 1024 \
+    --balance 
+
+# EFFORT baseline (same checkpoint as eval/pca).
+# For the paper's pretrained EFFORT instead, use:
+#   --config training/config/detector/effort.yaml
+#   --weights training/pretrained/effort_clip_L14_trainOn_FaceForensic.pth
+python eval/tsne/extract_tsne.py \
+    --config training/config/detector/effort_ce_orthogonal_weight.yaml \
+    --weights logs/training/effort_ce_orthogonal_weight_effort_custom_2026-08-23-19-55-41/final/ckpt_final.pth \
+    --dataset FaceForensics++ \
+    --output-dir eval/tsne/data/effort \
+    --perplexity 30 \
+    --pca-components 50 \
+    --max-points 2000 \
+    --n-jobs 8 \
+    --seed 1024 \
+    --balance 
+
+# CE + HSIC + CF
+python eval/tsne/extract_tsne.py \
+    --config training/config/detector/effort_ce_hsic_masked_counterfactual_backbone_clip_cf.yaml \
+    --weights logs/training/effort_ce_hsic_masked_counterfactual_backbone_clip_cf_effort_custom_seed_1024_2026-10-04-23-07-22/final/ckpt_final.pth \
+    --dataset FaceForensics++ \
+    --output-dir eval/tsne/data/ce_hsic_cf \
+    --perplexity 30 \
+    --pca-components 50 \
+    --max-points 2000 \
+    --n-jobs 8 \
+    --seed 1024 \
+    --balance 
