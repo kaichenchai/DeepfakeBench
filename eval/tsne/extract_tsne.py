@@ -35,6 +35,7 @@ import inspect
 import json
 import random
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -204,6 +205,13 @@ def get_device(requested: str):
 def extract_features(args: argparse.Namespace) -> tuple[np.ndarray, np.ndarray]:
     config = load_config(args.config, args.dataset)
     device = get_device(args.device)
+    print(f"Feature extraction device: {device}", flush=True)
+    if device.type == "cpu" and args.device == "auto":
+        print(
+            "WARNING: CUDA is not available to PyTorch; feature extraction is "
+            "running on CPU and may be very slow. Check torch.cuda.is_available().",
+            flush=True,
+        )
 
     if args.model_type == "vanilla-clip":
         model = VanillaClipFeatures(args.clip_path).to(device)
@@ -338,7 +346,9 @@ def main() -> None:
     args = parse_args()
     validate_args(args)
 
+    start = time.time()
     features, labels = extract_features(args)
+    print(f"Feature extraction finished in {time.time() - start:.1f}s", flush=True)
     unique_labels = np.unique(labels)
     unknown = sorted(set(unique_labels.tolist()) - LABEL_NAMES.keys())
     if unknown:
@@ -346,9 +356,11 @@ def main() -> None:
             f"Unexpected labels {unknown}; this script expects 0=real and 1=fake."
         )
 
+    start = time.time()
     coords, original_dimensions, pca_components, kl_divergence = compute_embedding(
         features, args
     )
+    print(f"PCA + t-SNE finished in {time.time() - start:.1f}s", flush=True)
     label_counts = {
         LABEL_NAMES[int(label)]: int((labels == label).sum()) for label in unique_labels
     }

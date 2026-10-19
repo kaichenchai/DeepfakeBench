@@ -33,7 +33,9 @@ dataset paths, preprocessing, resolution, and test loader settings. Override
 the local CLIP directory with `--clip-path` if needed.
 
 [`get_tsne_data.job`](../../get_tsne_data.job) runs the vanilla CLIP, EFFORT,
-and CE + HSIC + CF models used in the PCA comparison.
+and CE + HSIC + CF models used in the PCA comparison. It is a Slurm array job:
+the three models run as parallel tasks, one GPU each. Keep `#rj array=0-2` in
+sync with the number of entries in `PAIRS`.
 
 t-SNE is computed on all extracted samples. The coordinates written for
 plotting are then reduced to `--max-points` points (default `2000`), so LaTeX
@@ -95,6 +97,17 @@ Alternatively, use the combined file with the ground-truth class column:
 ] table[x=x, y=y, meta=class, col sep=comma]
     {eval/tsne/data/ce_hsic_cf/tsne.csv};
 ```
+
+## Device and performance
+
+Feature extraction uses `--device auto` by default: CUDA when
+`torch.cuda.is_available()` is true, otherwise CPU. t-SNE itself is CPU-only
+(`--n-jobs`), so the GPU only speeds up the model forward passes.
+
+The script prints the selected device, a warning when `auto` falls back to CPU,
+and timing for feature extraction and t-SNE. `get_tsne_data.job` passes
+`--device cuda` and checks CUDA before starting, so a misconfigured GPU
+environment fails immediately instead of running on CPU for hours.
 
 ## t-SNE parameters
 
