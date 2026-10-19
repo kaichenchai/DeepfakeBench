@@ -1,0 +1,37 @@
+#!/bin/bash
+#rj name=logits
+#rj queue=curtin_eecms
+#rj runtime=24
+#rj logdir=logs/slurm
+#rj priority=550
+#rj features=a100
+#rj cpus=16
+#rj mem=64G
+#rj gpus=a100:1
+# One task per testing dataset.
+#rj array=0-1
+
+set -euo pipefail
+
+source .venv/bin/activate
+
+export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID:-local}_${SLURM_ARRAY_TASK_ID:-0}
+mkdir -p "$TMPDIR"
+
+DATASETS=(
+    "FaceForensics++"
+)
+DATASET="${DATASETS[${SLURM_ARRAY_TASK_ID:-0}]}"
+
+python eval/logits/extract_logits.py \
+    --model effort \
+    training/config/detector/effort_ce_orthogonal_weight.yaml \
+    logs/training/effort_ce_orthogonal_weight_effort_custom_2026-08-23-19-55-41/final/ckpt_final.pth \
+    --model ours \
+    training/config/detector/effort_ce.yaml \
+    logs/training/effort_ce_effort_custom_2026-08-22-16-45-56/final/ckpt_final.pth \
+    --datasets "$DATASET" \
+    --output-dir "eval/logits/results/${DATASET// /_}" \
+    --device cuda
+
+rm -rf "$TMPDIR"
