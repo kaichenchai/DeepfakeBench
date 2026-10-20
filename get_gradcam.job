@@ -90,7 +90,7 @@ python eval/gradcam/generate_gradcam.py \
     --scan-batch-size 32 \
     --high-confidence 0.90 \
     --low-confidence 0.65 \
-    --target-class auto \
+    --target-class pred \
     --seed 1024 \
     --summary-samples 8
 

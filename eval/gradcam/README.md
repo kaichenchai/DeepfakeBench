@@ -62,9 +62,9 @@ category contains fewer than `--per-category` frames, all of them are rendered
 and a warning is printed. In-domain detectors can be very accurate, so finding
 misclassifications may require increasing `--scan-samples`.
 
-When `--target-class` is `auto` (the default in category mode), correct
-real/fake frames explain their ground-truth class and misclassifications
-explain the class the model predicted.
+In category mode the default target is `pred`: correct high-confidence frames
+explain their (correct) predicted class, and misclassifications explain the
+wrong class the model chose.
 
 ## Output files
 
@@ -76,6 +76,7 @@ For an output directory `eval/gradcam/data/<model>/`:
 | `images/<stem>_heatmap.png` | GradCAM heatmap |
 | `images/<stem>_overlay.png` | Heatmap blended over the input |
 | `summary.png` | Input / heatmap / overlay contact sheet |
+| `scan_results.csv` | Every scanned frame with `prob_fake`, `predicted_prob`, and its category; category mode only |
 | `results.csv` | Ground-truth label, category, prediction, `prob_fake`, target class, and file paths |
 | `meta.json` | Config, checkpoint, dataset, layer, sampling, scan counts, and rendering settings |
 | `gradcam.npy` | Raw CAM maps, `(N, 224, 224)`, only with `--save-npy` |
@@ -99,19 +100,20 @@ softmax score for class 1. `stem` is
 | `--high-confidence` | `0.90` | Minimum predicted-class probability for `*_high` |
 | `--low-confidence` | `0.65` | Maximum predicted-class probability for `misclassified_low` |
 | `--seed` | `1024` | Dataset-order and sampling seed |
-| `--target-class` | `fake` / `auto` | Explain the fake, real, or predicted class; `auto` is the default with `--categories` |
+| `--target-class` | `fake` / `pred` | Explain the fake, real, or predicted class; `pred` is the default with `--categories` |
 | `--token-reduction` | `patch` | Average gradients over patch tokens (`patch`) or use the CLS token gradient (`cls`) |
 | `--layer-index` | `-1` | Encoder layer to hook; `-1` is the last block |
 | `--alpha` | `0.5` | Heatmap opacity in the overlay |
 | `--cmap` | `jet` | Matplotlib colormap |
 | `--summary-samples` | `8` | Frames in `summary.png`; `0` disables it |
 | `--save-npy` | off | Write raw CAM maps |
-| `--device` | `auto` | `auto`, `cpu`, or `cuda` |
+| `--device` | `auto` | `auto`, `cpu`, `cuda`, or `mps`; `auto` prefers CUDA, then MPS |
 
 `--balance` and `--categories` cannot be combined. The script seeds Python,
-NumPy, and PyTorch before building the dataset, so the same seed scans and
-selects the same frames for every model. `get_gradcam.job` relies on this to
-make the model panels directly comparable.
+NumPy, PyTorch, and CUDA before building the dataset, so the same seed scans and
+selects the same frames for every model. `scan_results.csv` records the full
+scan, making the category selection auditable and repeatable. `get_gradcam.job`
+relies on this to make the model panels directly comparable.
 
 Use `--target-class real` to visualise evidence for the real class, or
 `--target-class pred` to always explain the model's decision. Video-level

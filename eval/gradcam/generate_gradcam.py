@@ -55,7 +55,7 @@ from detectors import DETECTOR  # noqa: E402
 from eval.pca.extract_features import load_config, load_weights  # noqa: E402
 
 LABEL_NAMES = {0: "real", 1: "fake"}
-TARGET_CLASSES = ("auto", "fake", "real", "pred")
+TARGET_CLASSES = ("fake", "real", "pred")
 TOKEN_REDUCTIONS = ("patch", "cls")
 CATEGORY_CHOICES = (
     "real_high",
@@ -90,9 +90,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--device",
-        choices=("auto", "cpu", "cuda"),
+        choices=("auto", "cpu", "cuda", "mps"),
         default="auto",
-        help="Inference device (default: auto).",
+        help="Inference device: auto, cpu, cuda, or mps (default: auto).",
     )
     parser.add_argument(
         "--num-samples",
@@ -167,10 +167,9 @@ def parse_args() -> argparse.Namespace:
         choices=TARGET_CLASSES,
         default=None,
         help=(
-            "Class score to explain: fake (1), real (0), pred, or auto. "
-            "Default: fake for random sampling; auto (ground-truth class for "
-            "correct high-confidence frames, the prediction for misclassifications) "
-            "when --categories is set."
+            "Class score to explain: fake (1), real (0), or pred "
+            "(the class the model predicted). Default: fake for random "
+            "sampling, pred when --categories is set."
         ),
     )
     parser.add_argument(
@@ -248,15 +247,22 @@ def validate_args(args: argparse.Namespace) -> None:
 
 
 def get_device(requested: str) -> torch.device:
-    if requested == "cuda" and not torch.cuda.is_available():
+    cuda_available = torch.cuda.is_available()
+    mps_backend = getattr(torch.backends, "mps", None)
+    mps_available = mps_backend is not None and mps_backend.is_available()
+
+    if requested == "cuda" and not cuda_available:
         raise SystemExit("CUDA was requested but is not available.")
-    if requested == "auto" and not torch.cuda.is_available():
-        print("[gradcam] CUDA is unavailable; falling back to CPU.", flush=True)
-    return torch.device(
-        "cuda"
-        if requested == "cuda" or (requested == "auto" and torch.cuda.is_available())
-        else "cpu"
-    )
+    if requested == "mps" and not mps_available:
+        raise SystemExit("MPS was requested but is not available.")
+
+    if requested == "cuda" or (requested == "auto" and cuda_available):
+        return torch.device("cuda")
+    if requested == "mps" or (requested == "auto" and mps_available):
+        return torch.device("mps")
+    if requested == "auto":
+        print("[gradcam] No CUDA or MPS device; falling back to CPU.", flush=True)
+    return torch.device("cpu")
 
 
 def sample_path(data_dict: dict[str, Any], index: int) -> str:
@@ -385,16 +391,6 @@ def select_category_samples(
                 flush=True,
             )
     return selected, counts
-
-
-def resolve_target(requested: str, category: str | None) -> str:
-    if requested != "auto":
-        return requested
-    if category == "real_high":
-        return "real"
-    if category == "fake_high":
-        return "fake"
-    return "pred"
 
 
 def resolve_layer(model: torch.nn.Module, layer_index: int) -> tuple[torch.nn.Module, str]:
@@ -536,6 +532,48 @@ def sample_stem(index: int, label: int, path: str, category: str | None = None) 
     return "_".join(parts)
 
 
+def write_scan_results(
+    path: Path,
+    records: list[dict[str, Any]],
+    dataset: DeepfakeAbstractBaseDataset,
+    high_confidence: float,
+    low_confidence: float,
+) -> None:
+    with path.open("w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(
+            (
+                "index",
+                "path",
+                "label",
+                "class",
+                "pred",
+                "pred_class",
+                "prob_fake",
+                "predicted_prob",
+                "category",
+            )
+        )
+        for record in sorted(records, key=lambda item: item["index"]):
+            label = record["label"]
+            category = (
+                classify_record(record, high_confidence, low_confidence) or ""
+            )
+            writer.writerow(
+                (
+                    record["index"],
+                    sample_path(dataset.data_dict, record["index"]),
+                    label,
+                    LABEL_NAMES[label],
+                    record["pred"],
+                    LABEL_NAMES[record["pred"]],
+                    f"{record['prob_fake']:.6f}",
+                    f"{record['predicted_prob']:.6f}",
+                    category,
+                )
+            )
+
+
 def write_summary(
     path: Path,
     rows: list[dict[str, Any]],
@@ -577,11 +615,16 @@ def main() -> None:
     args = parse_args()
     validate_args(args)
     if args.target_class is None:
-        args.target_class = "auto" if args.categories else "fake"
+        args.target_class = "pred" if args.categories else "fake"
 
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
+    mps_backend = getattr(torch.backends, "mps", None)
+    if mps_backend is not None and mps_backend.is_available():
+        torch.mps.manual_seed(args.seed)
 
     config = load_config(args.config, args.dataset)
     if config.get("video_mode", False):
@@ -596,6 +639,10 @@ def main() -> None:
     layer, layer_name = resolve_layer(model, args.layer_index)
     print(f"[gradcam] Target layer: {layer_name}", flush=True)
 
+    # Re-seed before dataset construction so the internal frame shuffle is
+    # identical for every model, independent of model initialization order.
+    random.seed(args.seed)
+    np.random.seed(args.seed)
     dataset = DeepfakeAbstractBaseDataset(config=config, mode="test")
     labels = np.asarray(dataset.data_dict["label"], dtype=np.int64)
     pool_size = len(dataset)
@@ -609,6 +656,7 @@ def main() -> None:
     category_by_index: dict[int, str] = {}
     category_counts: dict[str, int] = {}
     scanned = 0
+    scan_records: list[dict[str, Any]] = []
 
     if categories:
         scan_count = (
@@ -625,6 +673,7 @@ def main() -> None:
         records = scan_candidates(
             model, dataset, scan_indices, labels, device, args.scan_batch_size
         )
+        scan_records = records
         selected, category_counts = select_category_samples(
             records,
             categories,
@@ -656,6 +705,14 @@ def main() -> None:
     output_dir = args.output_dir
     image_dir = output_dir / "images"
     image_dir.mkdir(parents=True, exist_ok=True)
+    if scan_records:
+        write_scan_results(
+            output_dir / "scan_results.csv",
+            scan_records,
+            dataset,
+            args.high_confidence,
+            args.low_confidence,
+        )
 
     mean = config["mean"]
     std = config["std"]
@@ -669,13 +726,12 @@ def main() -> None:
         image = image.to(device).unsqueeze(0)
         image.requires_grad_(True)
         category = category_by_index.get(index)
-        target_choice = resolve_target(args.target_class, category)
 
         cam, probabilities, target, grid = compute_cam(
             model,
             layer,
             image,
-            target_choice,
+            args.target_class,
             args.token_reduction,
             int(config["resolution"]),
         )
