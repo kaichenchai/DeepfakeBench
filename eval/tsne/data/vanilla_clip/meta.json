@@ -1,0 +1,26 @@
+{
+  "model_type": "vanilla-clip",
+  "config": "training/config/detector/effort.yaml",
+  "weights": null,
+  "dataset": "FaceForensics++",
+  "features_dir": "eval/tsne/features/vanilla_clip",
+  "samples": 5600,
+  "label_counts": {
+    "real": 1120,
+    "fake": 4480
+  },
+  "output_samples": 500,
+  "output_label_counts": {
+    "real": 250,
+    "fake": 250
+  },
+  "max_points": 500,
+  "balance": true,
+  "original_dimensions": 1024,
+  "pca_components": 50,
+  "perplexity": 30.0,
+  "max_iter": 500,
+  "angle": 0.8,
+  "random_state": 1024,
+  "kl_divergence": 0.5748758912086487
+}

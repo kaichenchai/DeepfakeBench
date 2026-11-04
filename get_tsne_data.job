@@ -1,0 +1,78 @@
+#!/bin/bash
+#rj name=tsne_plots
+#rj queue=curtin_eecms
+#rj runtime=1
+#rj logdir=logs/slurm
+#rj priority=550
+#rj cpus=8
+#rj mem=16G
+# Keep this equal to 0-(number of entries in PAIRS below - 1).
+#rj array=0-2
+
+# Stage 2 of the t-SNE pipeline: run t-SNE on CPU from the feature caches
+# written by get_tsne_features.job, then write pgfplots-ready CSVs.
+# No GPU is requested; this also runs fine on a login node or locally.
+#
+#   rj get_tsne_features.job   # GPU: cache features + labels
+#   rj get_tsne_data.job       # CPU: t-SNE + CSV output
+
+# Bash Strict Mode
+set -euo pipefail
+
+# Activate virtual environment managed by uv
+source .venv/bin/activate
+
+# Avoid BLAS/OpenMP oversubscription when t-SNE uses multiple workers.
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MODEL ENTRIES — each entry runs as its own ARRAY TASK in PARALLEL.
+# Keep `#rj array` above equal to 0-(number of entries - 1).
+# Format: "FEATURES_DIR|OUTPUT_DIR"
+# ══════════════════════════════════════════════════════════════════════════════
+PAIRS=(
+    "eval/tsne/features/vanilla_clip|eval/tsne/data/vanilla_clip"
+    "eval/tsne/features/effort|eval/tsne/data/effort"
+    "eval/tsne/features/ce_hsic_cf|eval/tsne/data/ce_hsic_cf"
+)
+
+TASK_ID=${SLURM_ARRAY_TASK_ID:-0}
+TOTAL=${#PAIRS[@]}
+
+if [ "$TASK_ID" -ge "$TOTAL" ]; then
+    echo "[job] SLURM_ARRAY_TASK_ID=$TASK_ID out of range (max $((TOTAL-1))) — exiting"
+    exit 0
+fi
+
+IFS='|' read -r FEATURES_DIR OUTPUT_DIR <<< "${PAIRS[$TASK_ID]}"
+
+echo "=============================================="
+echo "  [job] Task $TASK_ID / $((TOTAL-1))"
+echo "  [job] Features: $FEATURES_DIR"
+echo "  [job] Output:   $OUTPUT_DIR"
+echo "  [job] Started:  $(date)"
+echo "=============================================="
+
+for file in features.npy labels.npy; do
+    if [ ! -f "$FEATURES_DIR/$file" ]; then
+        echo "[job] ERROR: missing $FEATURES_DIR/$file — run get_tsne_features.job first"
+        exit 1
+    fi
+done
+
+python eval/tsne/extract_tsne.py \
+    --features "$FEATURES_DIR" \
+    --output-dir "$OUTPUT_DIR" \
+    --perplexity 30 \
+    --pca-components 50 \
+    --max-points 500 \
+    --max-iter 500 \
+    --angle 0.8 \
+    --n-jobs 8 \
+    --seed 1024 \
+    --balance
+
+echo "[job] Task $TASK_ID finished at $(date)"

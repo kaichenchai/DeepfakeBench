@@ -1,0 +1,45 @@
+#!/bin/bash
+#rj name=clip-counterfactual
+#rj queue=curtin_eecms
+#rj runtime=10
+#rj logdir=logs/slurm
+#rj priority=550
+#rj features=a100
+
+# Bash Strict Mode
+set -euo pipefail
+
+# Activate virtual environment managed by uv
+source .venv/bin/activate
+
+# Load environment variables (wandb API key, etc.)
+if [ -f .env ]; then
+    set -a; source .env; set +a
+fi
+
+# Redirect multiprocessing temp dir to local storage to avoid
+# "Device or resource busy" errors on Lustre during worker cleanup
+export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}
+mkdir -p "$TMPDIR"
+
+
+torchrun --nproc_per_node=2 \
+    training/train.py \
+    --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone_fake_only.yaml \
+    --train_dataset "FaceForensics++" \
+    --test_dataset "FaceForensics++" \
+    --run_suffix "clip_counterfactual_relu" \
+    --ddp
+
+torchrun --nproc_per_node=2 \
+    training/train.py \
+    --detector_path ./training/config/detector/effort_ce_masked_counterfactual_backbone_real_only.yaml \
+    --train_dataset "FaceForensics++" \
+    --test_dataset "FaceForensics++" \
+    --run_suffix "clip_counterfactual_mse_norm" \
+    --ddp
+
+# Clean up local temp directory
+rm -rf "$TMPDIR"
+
+echo "Training job finished."

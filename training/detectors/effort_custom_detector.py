@@ -33,26 +33,49 @@ class Effort_Custom_Detector(AbstractDetector):
     def __init__(self, config=None):
         super(Effort_Custom_Detector, self).__init__(config)
         self.config = config
-        self.backbone = self.build_backbone(config)
+
+        # Load the pretrained CLIP ViT-L/14 once and derive both models from it.
+        clip_model = CLIPModel.from_pretrained("./models--openai--clip-vit-large-patch14/")
+
+        # Counterfactual backbone = the pristine, frozen original CLIP ViT.
+        # Built as a deepcopy BEFORE the SVD decomposition is applied, so the
+        # reference the residual is compared against is the true pretrained
+        # model, independent of svd_trainable_ranks.
+        if self.config['loss_functions'].get("requires_counterfactual_backbone", False):
+            self.counterfactual_backbone = copy.deepcopy(clip_model.vision_model)
+            for param in self.counterfactual_backbone.parameters():
+                param.requires_grad = False
+            self.counterfactual_backbone.eval()
+
+        self.backbone = self.build_backbone(config, clip_model)
+
         self.head = nn.Linear(1024, 2)
         self.loss_func = nn.CrossEntropyLoss()
+        # Used by the real branch of get_masked_counterfactual_backbone_loss.
+        self.mse_loss_func = nn.MSELoss()
         self.prob, self.label = [], []
         self.correct, self.total = 0, 0
+        # Per-batch cache for the (frozen) counterfactual backbone features,
+        # shared by all auxiliary losses that need them. Invalidated in forward().
+        self.cf_features = None
+        # Per-batch cache for the individual real / fake components of the
+        # masked counterfactual backbone loss, populated by
+        # get_masked_counterfactual_backbone_loss for separate logging.
+        self.cf_real_loss = None
+        self.cf_fake_loss = None
 
-    def build_backbone(self, config):
-        # Download model
+    def build_backbone(self, config, clip_model=None):
+        # ViT-L/14 224*224
         # https://huggingface.co/openai/clip-vit-large-patch14
-        
         # mean: [0.48145466, 0.4578275, 0.40821073]
         # std: [0.26862954, 0.26130258, 0.27577711]
-        
-        # ViT-L/14 224*224
-        clip_model = CLIPModel.from_pretrained("./models--openai--clip-vit-large-patch14/")
+        if clip_model is None:
+            clip_model = CLIPModel.from_pretrained("./models--openai--clip-vit-large-patch14/")
 
         # Apply SVD to self_attn layers only
         # ViT-L/14 224*224: 1024-1
-        # TODO test different levels of residual rank
-        clip_model.vision_model = apply_svd_residual_to_self_attn(clip_model.vision_model, r=1024-1)
+        n_trainable_ranks = config.get('svd_trainable_ranks', 1)
+        clip_model.vision_model = apply_svd_residual_to_self_attn(clip_model.vision_model, r=1024-n_trainable_ranks)
 
         for name, param in clip_model.vision_model.named_parameters():
             print('{}: {}'.format(name, param.requires_grad))
@@ -61,7 +84,7 @@ class Effort_Custom_Detector(AbstractDetector):
         print('Number of total parameters: {}, tunable parameters: {}'.format(num_total_param, num_param))
 
         return clip_model.vision_model
-
+    
     def build_loss(self, config):
         # prepare the loss function
         # This detector uses multiple losses, but we can return the main one here if needed
@@ -75,7 +98,17 @@ class Effort_Custom_Detector(AbstractDetector):
     def classifier(self, features: torch.tensor) -> torch.tensor:
         return self.head(features)
 
-    def get_orthogonal_loss(self) -> torch.tensor:
+    def _get_cf_features(self, data_dict: dict) -> torch.Tensor:
+        # Compute (and cache) the frozen counterfactual backbone's pooler
+        # features for the current batch. Runs under no_grad since the
+        # counterfactual backbone has requires_grad=False everywhere. Cached
+        # once per batch so multiple auxiliary losses share one forward pass.
+        if self.cf_features is None:
+            with torch.no_grad():
+                self.cf_features = self.counterfactual_backbone(data_dict["image"])["pooler_output"]
+        return self.cf_features
+
+    def get_orthogonal_loss(self, data_dict: dict = None, pred_dict: dict = None) -> torch.Tensor:
         # Regularization term
         loss = torch.tensor(0.0, device=next(self.parameters()).device)
         lambda_reg = 0.1
@@ -91,7 +124,7 @@ class Effort_Custom_Detector(AbstractDetector):
         
         return loss
 
-    def get_weight_loss(self) -> torch.tensor:
+    def get_weight_loss(self, data_dict: dict = None, pred_dict: dict = None) -> torch.Tensor:
         weight_sum_dict = {}
         for name, module in self.backbone.named_modules():
             if isinstance(module, SVDResidualLinear):
@@ -111,7 +144,7 @@ class Effort_Custom_Detector(AbstractDetector):
         loss = loss / len(weight_sum_dict.keys())
         return loss
     
-    def get_hsic_loss(self) -> torch.tensor:
+    def get_hsic_loss(self, data_dict: dict = None, pred_dict: dict = None) -> torch.Tensor:
         hsic_losses = []
         for module in self.backbone.modules():
             if isinstance(module, SVDResidualLinear):
@@ -123,39 +156,183 @@ class Effort_Custom_Detector(AbstractDetector):
             loss = torch.tensor(0.0, device=next(self.parameters()).device)
         return loss
     
+    def get_masked_counterfactual_backbone_loss(self, data_dict: dict, pred_dict: dict) -> torch.Tensor:
+        cf_features = self._get_cf_features(data_dict)
+
+        mask_real = (data_dict['label'] == 0)
+        mask_fake = (data_dict['label'] == 1)
+
+        # Ablation toggles: allow disabling the real / fake constraints individually.
+        # Set e.g. `enable_real_constraint: false` in the `masked_counterfactual_backbone`
+        # section of the loss_functions config to keep only the fake constraint (and vice versa).
+        loss_cfg = self.config["loss_functions"].get("masked_counterfactual_backbone", {})
+        enable_real_constraint = loss_cfg.get("enable_real_constraint", True)
+        enable_fake_constraint = loss_cfg.get("enable_fake_constraint", True)
+
+        device = next(self.parameters()).device
+        real_part = torch.tensor(0.0, device=device)
+        fake_part = torch.tensor(0.0, device=device)
+        
+        if enable_real_constraint and mask_real.sum() > 0:
+            cf_real = cf_features[mask_real]
+            pred_real = pred_dict['feat'][mask_real]
+            real_loss_type = loss_cfg.get("real_loss_type", "relative_mse")
+
+            if real_loss_type == "cosine":
+                real_part = real_part + (
+                    1 - F.cosine_similarity(cf_real, pred_real, dim=-1)
+                ).mean()
+            elif real_loss_type == "normalised_mse":
+                # LEGACY (buggy): mixes a batch+dim-averaged numerator with a
+                # per-sample-summed denominator, leaving a spurious 1/D factor
+                # (D = feature dim), i.e. ~1024x weaker than intended. Kept only
+                # for reproducing older runs -- use 'normalized_mse_fixed'.
+                mse = self.mse_loss_func(cf_real, pred_real)
+                scale = (cf_real.norm(p=2, dim=-1)**2).mean().detach() + 1e-8
+                real_part = real_part + (mse / scale)
+            elif real_loss_type == "normalised_mse_fixed":
+                # Same idea as the legacy branch above, with the aggregation
+                # mismatch removed. With m_i = sum_d (cf_i - pred_i)_d^2:
+                #
+                #   legacy: mean_i(m_i) / (D * mean_i(||cf_i||^2))
+                #   fixed:  mean_i(m_i) /      mean_i(||cf_i||^2)
+                #
+                # The numerator `nn.MSELoss()` (reduction='mean') averages over
+                # the batch AND the D feature dims, while `scale` sums over the
+                # feature dim per sample and only averages over the batch, so
+                # the legacy quotient carries an extra 1/D. This branch divides
+                # a per-sample summed error (already summed over D) by a single
+                # batch-level scale, making the term dimensionless and O(1).
+                #
+                # Unlike 'relative_mse' (mean of per-sample ratios), the scale
+                # here is one batch-level scalar (ratio of means); the two
+                # coincide when the per-sample norms are equal, which is nearly
+                # the case for CLIP pooler features (post-LayerNorm).
+                d2 = ((cf_real - pred_real) ** 2).sum(dim=-1)
+                scale = (cf_real ** 2).sum(dim=-1).mean().detach() + 1e-8
+                real_part = real_part + (d2 / scale).mean()
+            elif real_loss_type == "relative_mse":
+                d2 = ((cf_real - pred_real) ** 2).sum(dim=-1)
+                cf_norm2 = (cf_real ** 2).sum(dim=-1).detach() + 1e-8
+                real_part = real_part + (d2 / cf_norm2).mean()
+            else:
+                raise ValueError(f"Unknown real_loss_type: {real_loss_type}")
+
+        if enable_fake_constraint and mask_fake.sum() > 0:
+            cf_fake = cf_features[mask_fake]
+            pred_fake = pred_dict['feat'][mask_fake]
+            fake_loss_type = loss_cfg.get("fake_loss_type", "relu")
+            
+            if fake_loss_type == "relu":
+                cos_sim = F.cosine_similarity(cf_fake, pred_fake, dim=-1)
+                fake_part = fake_part + F.relu(cos_sim).mean()
+            elif fake_loss_type == "softplus":
+                beta = loss_cfg.get("softplus_beta", 3.0)
+                cos_sim = F.cosine_similarity(cf_fake, pred_fake, dim=-1)
+                fake_part = fake_part + F.softplus(beta * cos_sim).mean() / beta
+            elif fake_loss_type == "cosine_sq":
+                cos_sim = F.cosine_similarity(cf_fake, pred_fake, dim=-1)
+                fake_part = fake_part + (cos_sim ** 2).mean()
+            elif fake_loss_type == "piecewise":
+                cos_sim = F.cosine_similarity(cf_fake, pred_fake, dim=-1)
+                eps = loss_cfg.get("piecewise_eps", 0.05)
+                fake_part = fake_part + torch.where(cos_sim > 0, cos_sim**2, eps * cos_sim**2).mean()
+            else:
+                raise ValueError(f"Unknown fake_loss_type: {fake_loss_type}")
+            
+        real_loss_scale = loss_cfg.get("real_loss_scale", 1.0)
+        fake_loss_scale = loss_cfg.get("fake_loss_scale", 1.0)
+        real_part = real_loss_scale * real_part
+        fake_part = fake_loss_scale * fake_part 
+            
+        # Cache the individual (unscaled) components so get_losses can log them
+        # separately alongside the aggregated loss.
+        self.cf_real_loss = real_part.detach()
+        self.cf_fake_loss = fake_part.detach()
+
+        return real_part + fake_part
+    
+    def get_kl_decision_loss(self, data_dict: dict, pred_dict: dict) -> torch.Tensor:
+        # Decision-level counterfactual loss: for fake images only, push the
+        # counterfactual logits (pristine CLIP features through the shared
+        # head) toward uniform — "without the residual pathway, the model
+        # should have no evidence either way."
+        #
+        # Gradient flows ONLY into self.head (the counterfactual backbone is
+        # frozen); the head call must stay OUTSIDE torch.no_grad() or this
+        # loss silently contributes zero gradient.
+        mask_fake = (data_dict['label'] == 1)
+        if mask_fake.sum() == 0:
+            return torch.tensor(0.0, device=next(self.parameters()).device)
+
+        cf_features = self._get_cf_features(data_dict)
+
+        # Mask BEFORE the head so logits are only computed for the fake subset.
+        cf_logits = self.head(cf_features[mask_fake])
+
+        log_probs = F.log_softmax(cf_logits, dim=-1)
+        uniform_target = torch.full_like(log_probs, 1.0 / log_probs.size(-1))
+        return F.kl_div(log_probs, uniform_target, reduction='batchmean')
+    
     def get_losses(self, data_dict: dict, pred_dict: dict) -> dict:
         label = data_dict['label']
         pred = pred_dict['cls']
-        device = pred.device
 
         cross_entropy_loss = self.loss_func(pred, label)
         
         overall_loss = cross_entropy_loss
         
-        # default cases if not in training
-        scaled_orthogonal_loss = torch.tensor(0.0, device=device).detach()
-        scaled_weight_loss = torch.tensor(0.0, device=device).detach()
-        scaled_hsic_loss = torch.tensor(0.0, device=device).detach()
+        dynamic_losses = {
+            'hsic_loss': torch.tensor(0.0, device=pred.device).detach(),
+            'weight_loss': torch.tensor(0.0, device=pred.device).detach(),
+            'orthogonal_loss': torch.tensor(0.0, device=pred.device).detach(),
+            'masked_counterfactual_backbone_loss': torch.tensor(0.0, device=pred.device).detach(),
+            'masked_counterfactual_backbone_real_loss': torch.tensor(0.0, device=pred.device).detach(),
+            'masked_counterfactual_backbone_fake_loss': torch.tensor(0.0, device=pred.device).detach(),
+            'kl_decision_loss': torch.tensor(0.0, device=pred.device).detach(),
+        }
         
-        # Only compute all of these other losses when training as they are not needed
+        # Only compute all of these other losses when training
         if self.training:
-            if 'orthogonal' in self.config['loss_functions']['selected']:
-                lambda_orthogonal = self.config['loss_functions']['orthogonal']['lambda']
-                orthogonal_loss = self.get_orthogonal_loss()
-                scaled_orthogonal_loss = lambda_orthogonal * orthogonal_loss
-                overall_loss = overall_loss + scaled_orthogonal_loss
+            for loss_name in self.config["loss_functions"]["selected"]:
+                # will need to maintain loss function name consistency
+                method_name = f"get_{loss_name}_loss"
                 
-            if 'weight' in self.config['loss_functions']['selected']:
-                lambda_weight = self.config['loss_functions']['weight']['lambda']
-                weight_loss = self.get_weight_loss()
-                scaled_weight_loss = lambda_weight * weight_loss
-                overall_loss = overall_loss + scaled_weight_loss
-            
-            if 'hsic' in self.config['loss_functions']['selected']:
-                lambda_hsic = self.config['loss_functions']['hsic']['lambda']
-                hsic_loss = self.get_hsic_loss()
-                scaled_hsic_loss = lambda_hsic * hsic_loss
-                overall_loss = overall_loss + scaled_hsic_loss
+                if hasattr(self, method_name):
+                    loss_method = getattr(self, method_name)
+                    loss_cfg = self.config["loss_functions"].get(loss_name, {})
+                    lambda_val = loss_cfg.get("lambda", 1.0)
+                    backprop = loss_cfg.get("backprop", True)
+
+                    # Compute the auxiliary loss. When `backprop` is False the
+                    # loss is still measured and logged, but it is computed
+                    # under no_grad so it never contributes to the backward pass.
+                    if backprop:
+                        loss_val = loss_method(data_dict, pred_dict)
+                    else:
+                        with torch.no_grad():
+                            loss_val = loss_method(data_dict, pred_dict)
+
+                    scaled_loss = lambda_val * loss_val
+                    if backprop:
+                        # Out-of-place accumulation: `overall_loss` is initialised as
+                        # an alias of `cross_entropy_loss`, so an in-place `+=` (add_)
+                        # would overwrite the CE value that is logged below.
+                        overall_loss = overall_loss + scaled_loss
+                    
+                    # update dynamic losses dict for logging
+                    key = f"{loss_name}_loss"
+                    if key in dynamic_losses:
+                        dynamic_losses[key] = scaled_loss.detach()
+
+                    # Log the real / fake components of the counterfactual
+                    # backbone loss individually. The cached values are raw
+                    # (pre-lambda) components produced by the loss method.
+                    if loss_name == 'masked_counterfactual_backbone':
+                        if self.cf_real_loss is not None:
+                            dynamic_losses['masked_counterfactual_backbone_real_loss'] = lambda_val * self.cf_real_loss
+                        if self.cf_fake_loss is not None:
+                            dynamic_losses['masked_counterfactual_backbone_fake_loss'] = lambda_val * self.cf_fake_loss
 
         # masking for real and fake classification loss
         mask_real = label == 0
@@ -164,21 +341,19 @@ class Effort_Custom_Detector(AbstractDetector):
         if mask_real.sum() > 0:
             loss_real = self.loss_func(pred[mask_real], label[mask_real])
         else:
-            loss_real = torch.tensor(0.0, device=device)
+            loss_real = torch.tensor(0.0, device=pred.device)
 
         if mask_fake.sum() > 0:
             loss_fake = self.loss_func(pred[mask_fake], label[mask_fake])
         else:
-            loss_fake = torch.tensor(0.0, device=device)
+            loss_fake = torch.tensor(0.0, device=pred.device)
 
         loss_dict = {
             'overall': overall_loss,
             'real_loss': loss_real.detach(),
             'fake_loss': loss_fake.detach(),
             'cross_entropy_loss': cross_entropy_loss.detach(),
-            'hsic_loss': scaled_hsic_loss.detach(),
-            'weight_loss': scaled_weight_loss.detach(),
-            'orthogonal_loss': scaled_orthogonal_loss.detach(),
+            **dynamic_losses,
         }
                 
         return loss_dict
@@ -192,6 +367,9 @@ class Effort_Custom_Detector(AbstractDetector):
         return metric_batch_dict
 
     def forward(self, data_dict: dict, inference=False) -> dict:
+        # New batch: invalidate the per-batch counterfactual-features cache so
+        # the auxiliary losses lazily recompute it (once) for this batch.
+        self.cf_features = None
         # get the features by backbone
         features = self.features(data_dict)
         # get the prediction by classifier
@@ -202,6 +380,66 @@ class Effort_Custom_Detector(AbstractDetector):
         pred_dict = {'cls': pred, 'prob': prob, 'feat': features}
 
         return pred_dict
+
+    # ------------------------------------------------------------------
+    # Serialisation helpers
+    # ------------------------------------------------------------------
+    def state_dict(self, destination=None, prefix='', keep_vars=False):
+        """
+        Return a state_dict containing ONLY the trainable parts:
+          - backbone (with its SVDResidualLinear residual params)
+          - head
+
+        The counterfactual backbone is NOT saved because it is the
+        pristine, frozen original CLIP ViT, rebuilt from the local HF
+        checkpoint at construction time.
+        """
+        sd = super().state_dict(destination, prefix, keep_vars)
+
+        # Strip out counterfactual_backbone keys so they are never
+        # accidentally loaded into a differently-shaped model.
+        keys_to_remove = [k for k in sd if k.startswith(prefix + 'counterfactual_backbone')]
+        for k in keys_to_remove:
+            del sd[k]
+
+        return sd
+
+    def load_state_dict(self, state_dict, strict: bool = True):
+        """
+        Load backbone + head weights.  The counterfactual backbone (the
+        pristine, frozen original CLIP ViT) is built independently at
+        construction time and is left untouched here.
+
+        Returns a ``_IncompatibleKeys`` namedtuple with fields
+        ``missing_keys`` and ``unexpected_keys`` (same as
+        ``nn.Module.load_state_dict``).
+        """
+        # Always strip counterfactual_backbone keys — old checkpoints
+        # saved before the state_dict() override may still contain them.
+        filtered = {
+            k: v for k, v in state_dict.items()
+            if not k.startswith('counterfactual_backbone.')
+        }
+
+        if hasattr(self, 'counterfactual_backbone') and self.counterfactual_backbone is not None:
+            # The counterfactual backbone is the pristine, frozen original
+            # CLIP ViT built at construction time (not from the checkpoint),
+            # so its params are intentionally absent from the checkpoint.
+            # Load with strict=False, then validate that *only* cf keys are
+            # missing (anything else is a real problem).
+            result = super().load_state_dict(filtered, strict=False)
+            real_missing = [k for k in result.missing_keys
+                            if not k.startswith('counterfactual_backbone.')]
+            if real_missing:
+                logger.error(
+                    'Unexpected missing keys in state_dict: %s', real_missing
+                )
+                raise RuntimeError(
+                    f'Missing key(s) in state_dict: {real_missing}'
+                )
+            return result
+        else:
+            return super().load_state_dict(filtered, strict=strict)
 
 
 # Custom module to represent the residual using SVD components
@@ -218,8 +456,15 @@ class SVDResidualLinear(nn.Module):
             self.weight_main.data.copy_(init_weight)
         else:
             nn.init.kaiming_uniform_(self.weight_main, a=math.sqrt(5))
-        
-        # For HSIC loss calculation        
+
+        # optional residual parameters – registered as None so they always
+        # appear in state_dict() / load_state_dict() with consistent keys.
+        # replace_with_svd_residual() overwrites them with real tensors.
+        self.register_parameter('U_residual', None)
+        self.register_parameter('V_residual', None)
+        self.register_parameter('S_residual', None)
+
+        # For HSIC loss calculation
         self.hsic_loss_func = HSICLoss()
         self.cached_main_features = None
         self.cached_residual_features = None

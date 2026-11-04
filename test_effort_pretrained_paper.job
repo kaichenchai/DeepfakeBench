@@ -1,0 +1,18 @@
+#!/bin/bash
+#rj name=effort_cross_dataset_test
+#rj runtime=3
+#rj logdir=logs/slurm/cross_dataset_test
+#rj priority=550
+#rj features=a100
+
+source .venv/bin/activate
+
+# Load environment variables (wandb API key, etc.)
+if [ -f .env ]; then
+    set -a; source .env; set +a
+fi
+
+python training/cross_dataset_test.py \
+        --detector_path "./training/config/detector/effort.yaml" \
+        --weights_path "./training/pretrained/effort_clip_L14_trainOn_FaceForensic.pth" \
+        --wandb_name "cross_dataset_test_effort_clip_L14_trainOn_FaceForensic" \

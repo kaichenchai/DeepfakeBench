@@ -74,16 +74,17 @@ class Trainer(object):
         self.timenow = time_now
         # create directory path
         task_str = f"_{config['task_target']}" if config.get('task_target', None) is not None else ""
+        run_suffix_str = f"_{config['run_suffix']}" if config.get('run_suffix', None) else ""
     
         full_run_name = ""
         if config.get('run_name', None) is not None:
-            full_run_name = config['run_name'] + '_' + config['model_name'] + task_str + '_' + self.timenow
+            full_run_name = config['run_name'] + '_' + config['model_name'] + task_str + run_suffix_str + '_' + self.timenow
             self.log_dir = os.path.join(
                 config['log_dir'],
                 full_run_name
             )
         else:
-            full_run_name = config['model_name'] + task_str + '_' + self.timenow
+            full_run_name = config['model_name'] + task_str + run_suffix_str + '_' + self.timenow
             self.log_dir =  os.path.join(
                         config['log_dir'],
                         full_run_name
@@ -272,7 +273,7 @@ class Trainer(object):
             # more elegant and more scalable way of moving data to GPU
             for key in data_dict.keys():
                 if data_dict[key]!=None and key!='name':
-                    data_dict[key]=data_dict[key].cuda()
+                    data_dict[key]=data_dict[key].to(self.device)
 
             losses,predictions=self.train_step(data_dict)
 
@@ -293,7 +294,9 @@ class Trainer(object):
                 train_recorder_loss[name].update(value)
 
             # run tensorboard to visualize the training process
-            if iteration % 300 == 0 and self.config['local_rank']==0:
+            # Log every `train_log_interval` iterations (default: 10) to wandb/tensorboard
+            train_log_interval = self.config.get('train_log_interval', 10)
+            if iteration % train_log_interval == 0 and self.config['local_rank']==0:
                 if self.config['SWA'] and (epoch>self.config['swa_start'] or self.config['dry_run']):
                     self.scheduler.step()
                 # info for loss

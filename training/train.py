@@ -49,6 +49,13 @@ parser.add_argument('--no-save_feat', dest='save_feat', action='store_false', de
 parser.add_argument("--ddp", action='store_true', default=False)
 parser.add_argument('--local_rank', type=int, default=-1)
 parser.add_argument('--task_target', type=str, default="", help='specify the target of current training task')
+parser.add_argument('--manual_seed', type=int, default=None,
+                    help='override the manualSeed value from the detector config')
+parser.add_argument('--run_suffix', type=str, default="",
+                    help='suffix appended to the run name (log dir + wandb run name)')
+parser.add_argument('--no-wandb', action='store_true', default=False, help='Disable wandb logging for test runs')
+parser.add_argument('--upload-output', action='store_true', default=False,
+                    help='Upload the entire output folder to wandb as an artifact')
 args = parser.parse_args()
 
 # Handle local_rank from environment (torchrun) or argument (legacy)
@@ -58,7 +65,8 @@ if args.local_rank == -1:
     else:
         args.local_rank = 0
 
-torch.cuda.set_device(args.local_rank)
+if torch.cuda.is_available():
+    torch.cuda.set_device(args.local_rank)
 
 
 def init_seed(config):
@@ -251,6 +259,19 @@ def main():
         config['test_dataset'] = args.test_dataset
     config['save_ckpt'] = args.save_ckpt
     config['save_feat'] = args.save_feat
+    
+    if args.no_wandb:
+        config['wandb']['enabled'] = False
+
+    if args.upload_output:
+        config['upload_output'] = True
+
+    # CLI overrides applied to config before the Trainer is constructed:
+    # the Trainer snapshots config into the wandb run and the log dir name.
+    if args.manual_seed is not None:
+        config['manualSeed'] = args.manual_seed
+    if args.run_suffix:
+        config['run_suffix'] = args.run_suffix
 
     # Auto-detect platform: disable CUDA on macOS, enable on other platforms
     if sys.platform == 'darwin':
@@ -265,16 +286,17 @@ def main():
     # create logger
     timenow=datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
     task_str = f"_{config['task_target']}" if config.get('task_target', None) is not None else ""
+    run_suffix_str = f"_{config['run_suffix']}" if config.get('run_suffix', None) else ""
     
     if config.get('run_name', None) is not None:
         logger_path = os.path.join(
             config['log_dir'],
-            config['run_name'] + '_' + config['model_name'] + task_str + '_' + timenow
+            config['run_name'] + '_' + config['model_name'] + task_str + run_suffix_str + '_' + timenow
         )
     else:
         logger_path =  os.path.join(
                     config['log_dir'],
-                    config['model_name'] + task_str + '_' + timenow
+                    config['model_name'] + task_str + run_suffix_str + '_' + timenow
                 )
     os.makedirs(logger_path, exist_ok=True)
     logger = create_logger(os.path.join(logger_path, 'training.log'))
@@ -341,6 +363,32 @@ def main():
             scheduler.step()
 
     logger.info("Stop Training on best Testing metric {}".format(parse_metric_for_print(best_metric))) 
+
+    # save the final checkpoint (regardless of whether it was the best)
+    final_ckpt_path = None
+    if config['save_ckpt']:
+        final_ckpt_dir = os.path.join(logger_path, 'final')
+        os.makedirs(final_ckpt_dir, exist_ok=True)
+        final_ckpt_path = os.path.join(final_ckpt_dir, 'ckpt_final.pth')
+        if config['ddp']:
+            torch.save(trainer.model.module.state_dict(), final_ckpt_path)
+        else:
+            torch.save(trainer.model.state_dict(), final_ckpt_path)
+        logger.info(f"Final checkpoint saved to {final_ckpt_path}")
+
+    # Upload entire output folder to wandb as an artifact if requested
+    if config.get('upload_output', False):
+        if hasattr(wandb, 'run') and wandb.run is not None:
+            artifact = wandb.Artifact(
+                name=f"{config.get('model_name', 'model')}_output",
+                type="output",
+                description=f"Full output folder from {config.get('model_name', 'model')} run",
+            )
+            artifact.add_dir(logger_path, name="output")
+            wandb.log_artifact(artifact)
+            logger.info(f"Uploaded output folder to wandb as artifact: {logger_path}")
+        else:
+            logger.warning("--upload-output was set but wandb is not active; skipping upload")
 
     # finish wandb run
     if hasattr(wandb, 'run') and wandb.run is not None:

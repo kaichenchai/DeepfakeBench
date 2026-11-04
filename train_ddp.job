@@ -1,27 +1,64 @@
 #!/bin/bash
-#rj name=effort_ce_ddp
-#rj gpus=a100:4
+#rj name=effort-detector
+#rj queue=curtin_eecms
+#rj gpus=a100:2
 #rj nodes=1
 #rj taskspernode=1
 #rj cpus=*
 #rj mem=200G
-#rj runtime=1
+#rj runtime=10
 #rj logdir=logs/slurm
 #rj priority=550
+#rj features=a100
+#rj array=0
+
+TRAIN_DATASET="FaceForensics++"
+TEST_DATASET="FaceForensics++"
+
+CONFIGS=(
+    "./training/config/detector/effort_ce_masked_counterfactual_backbone_mse_norm_100_relu.yaml"
+)
 
 # Bash Strict Mode
 set -euo pipefail
 
-# Activate virtual environment managed by uv
+TASK_ID=${SLURM_ARRAY_TASK_ID:-0}
+N_CONFIGS=${#CONFIGS[@]}
+
+if [ "$TASK_ID" -ge "$N_CONFIGS" ]; then
+    echo "[job] SLURM_ARRAY_TASK_ID=$TASK_ID out of range (max $((N_CONFIGS-1))) — exiting"
+    exit 0
+fi
+
+DETECTOR_CONFIG="${CONFIGS[$TASK_ID]}"
+
+echo "=============================================="
+echo "  [job] Array Task $TASK_ID / $((N_CONFIGS-1))"
+echo "  [job] Config: $DETECTOR_CONFIG"
+echo "  [job] Started at: $(date)"
+echo "=============================================="
+
+# Activate virtual environment managed by uv (MUST be in repo root)
 source .venv/bin/activate
 
-# Execute training using torchrun
-# - nproc_per_node=4 matches the 4 GPUs requested above
-torchrun --nproc_per_node=4 \
+# Load environment variables (wandb API key, etc.)
+if [ -f .env ]; then
+    set -a; source .env; set +a
+fi
+
+# Redirect multiprocessing temp dir to local storage to avoid
+# "Device or resource busy" errors on Lustre during worker cleanup
+export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}_${TASK_ID}
+mkdir -p "$TMPDIR"
+
+torchrun --nproc_per_node=2 \
     training/train.py \
-    --detector_path ./training/config/detector/effort_ce.yaml \
-    --train_dataset "UADFV" \
-    --test_dataset "UADFV" \
+    --detector_path "$DETECTOR_CONFIG" \
+    --train_dataset "$TRAIN_DATASET" \
+    --test_dataset "$TEST_DATASET" \
     --ddp
 
-echo "Training job finished."
+# Clean up local temp directory
+rm -rf "$TMPDIR"
+
+echo "[job] Training ($DETECTOR_CONFIG) finished at $(date)."

@@ -4,9 +4,15 @@ nohup.out
 *.whl
 *.pth
 /datasets/
+*.runtime_log
+
+/download/*
 
 */models--openai--clip-vit-large-patch14/*
 /logs/
+/eval/gradcam/data/
+# t-SNE feature caches are large and regenerable; the CSV plot data is tracked.
+# /eval/tsne/features/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

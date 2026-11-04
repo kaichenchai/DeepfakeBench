@@ -1,0 +1,159 @@
+#!/bin/bash
+#rj name=cross-dataset-test
+#rj queue=curtin_eecms
+#rj runtime=3
+#rj logdir=logs/slurm/cross_dataset_test
+#rj priority=550
+#rj features=a100
+#rj gpus=a100:1
+#rj cpus=16
+#rj mem=32G
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CONFIG / WEIGHT PAIRS — runs sequentially.
+# Each pair benchmarks BOTH final/ckpt_final.pth AND test/avg/ckpt_best.pth.
+# Add/remove entries here to change what gets evaluated.
+# Each entry: "CONFIG|WEIGHTS_DIR"
+# ══════════════════════════════════════════════════════════════════════════════
+CFG_DIR="./training/config/detector"
+TRAINING_DIR="./logs/training"
+
+PAIRS=(
+    "effort_ce_hsic_8_masked_counterfactual_backbone.yaml|effort_ce_hsic_8_masked_counterfactual_backbone_effort_custom_2026-07-26-02-49-30"
+    "effort_ce_hsic_16_masked_counterfactual_backbone.yaml|effort_ce_hsic_16_masked_counterfactual_backbone_effort_custom_2026-07-26-05-45-25"
+    "effort_ce_hsic_32_masked_counterfactual_backbone.yaml|effort_ce_hsic_32_masked_counterfactual_backbone_effort_custom_2026-07-26-08-41-53"
+)
+
+
+echo "=============================================="
+echo "  [job] Job started at $(date)"
+echo "  [job] SLURM_JOB_ID=${SLURM_JOB_ID:-N/A}"
+echo "  [job] Hostname: $(hostname)"
+echo "  [job] Working dir: $(pwd)"
+echo "  [job] Total pairs to run: ${#PAIRS[@]}"
+echo "=============================================="
+
+echo "[job] Activating virtual environment..."
+if [ -f .venv/bin/activate ]; then
+    source .venv/bin/activate
+    echo "[job] Virtual environment activated."
+    # Load environment variables (wandb API key, etc.)
+    if [ -f .env ]; then
+        set -a; source .env; set +a
+    fi
+else
+    echo "[job] ERROR: .venv/bin/activate not found! Searching for python..."
+fi
+
+PYTHON_BIN="$(command -v python3 || command -v python || echo 'NOT_FOUND')"
+echo "[job] Python binary: ${PYTHON_BIN}"
+if [ "${PYTHON_BIN}" != "NOT_FOUND" ]; then
+    ${PYTHON_BIN} --version 2>&1 || true
+else
+    echo "[job] ERROR: No Python found!"
+fi
+
+echo "[job] Setting up temp directory..."
+export TMPDIR=/tmp/slurm_job_${SLURM_JOB_ID}
+mkdir -p "$TMPDIR" || { echo "[job] ERROR: Could not create TMPDIR=$TMPDIR"; }
+echo "[job] TMPDIR=$TMPDIR"
+
+echo "[job] Checking dataset directories..."
+for ds in FaceForensics++ UADFV Celeb-DF-v1 Celeb-DF-v2 DFDC DFDCP; do
+    if [ -d "./datasets/rgb/$ds" ]; then
+        echo "  [job]   Dataset found: ./datasets/rgb/$ds"
+    else
+        echo "  [job]   WARNING: Dataset NOT found: ./datasets/rgb/$ds"
+    fi
+done
+
+echo "=============================================="
+echo "  [job] Starting sequential pair evaluations..."
+echo "=============================================="
+
+set -euo pipefail
+
+TOTAL=${#PAIRS[@]}
+PASSED=0
+FAILED=0
+
+for i in "${!PAIRS[@]}"; do
+    IFS='|' read -r CONFIG_NAME WEIGHTS_DIR_NAME <<< "${PAIRS[$i]}"
+    DETECTOR_CONFIG="${CFG_DIR}/${CONFIG_NAME}"
+    WEIGHTS_FINAL="${TRAINING_DIR}/${WEIGHTS_DIR_NAME}/final/ckpt_final.pth"
+    WEIGHTS_BEST="${TRAINING_DIR}/${WEIGHTS_DIR_NAME}/test/avg/ckpt_best.pth"
+
+    echo ""
+    echo "=============================================="
+    echo "  [$((i+1))/${TOTAL}] Config:  $CONFIG_NAME"
+    echo "  [$((i+1))/${TOTAL}] Weights: $WEIGHTS_DIR_NAME"
+    echo "  [$((i+1))/${TOTAL}] Benchmarking: final + best"
+    echo "  [$((i+1))/${TOTAL}] Started at: $(date)"
+    echo "=============================================="
+
+    PAIR_OK=true
+
+    if [ ! -f "$DETECTOR_CONFIG" ]; then
+        echo "  [ERROR] Config not found: $DETECTOR_CONFIG  — SKIPPING"
+        FAILED=$((FAILED + 1))
+        continue
+    fi
+
+    # ── FINAL checkpoint ────────────────────────────────────────────────
+
+    echo ""
+    echo "──────────────────────────────────────────────"
+    echo "  [final] Testing: $WEIGHTS_DIR_NAME/final/ckpt_final.pth"
+    echo "  [final] Started at: $(date)"
+    echo "──────────────────────────────────────────────"
+
+    if [ ! -f "$WEIGHTS_FINAL" ]; then
+        echo "  [WARNING] Final weights not found: $WEIGHTS_FINAL  — SKIPPING"
+    else
+        python training/cross_dataset_test.py \
+            --detector_path "$DETECTOR_CONFIG" \
+            --weights_path "$WEIGHTS_FINAL" \
+            --checkpoint_type final \
+        && { echo "  [final] PASSED at $(date)"; } \
+        || { echo "  [final] FAILED at $(date)"; PAIR_OK=false; }
+    fi
+
+    # ── BEST checkpoint ─────────────────────────────────────────────────
+
+    echo ""
+    echo "──────────────────────────────────────────────"
+    echo "  [best]  Testing: $WEIGHTS_DIR_NAME/test/avg/ckpt_best.pth"
+    echo "  [best]  Started at: $(date)"
+    echo "──────────────────────────────────────────────"
+
+    if [ ! -f "$WEIGHTS_BEST" ]; then
+        echo "  [WARNING] Best weights not found: $WEIGHTS_BEST  — SKIPPING"
+    else
+        python training/cross_dataset_test.py \
+            --detector_path "$DETECTOR_CONFIG" \
+            --weights_path "$WEIGHTS_BEST" \
+            --checkpoint_type best \
+        && { echo "  [best]  PASSED at $(date)"; } \
+        || { echo "  [best]  FAILED at $(date)"; PAIR_OK=false; }
+    fi
+
+    if $PAIR_OK; then
+        echo "  [$((i+1))/${TOTAL}] PAIR PASSED at $(date)"
+        PASSED=$((PASSED + 1))
+    else
+        echo "  [$((i+1))/${TOTAL}] PAIR FAILED at $(date)"
+        FAILED=$((FAILED + 1))
+    fi
+done
+
+echo ""
+echo "=============================================="
+echo "  [job] ALL DONE — Passed: $PASSED / $TOTAL, Failed: $FAILED"
+echo "  [job] Finished at: $(date)"
+echo "=============================================="
+
+echo "[job] Cleaning up local temp directory..."
+rm -rf "$TMPDIR"
+
+echo "[job] Testing job finished at $(date)."

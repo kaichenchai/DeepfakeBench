@@ -1,0 +1,10 @@
+{
+  "model_type": "detector",
+  "config": "training/config/detector/effort_ce_orthogonal_weight.yaml",
+  "weights": "logs/training/effort_ce_orthogonal_weight_effort_custom_2026-08-23-19-55-41/final/ckpt_final.pth",
+  "dataset": "FaceForensics++",
+  "samples": 5600,
+  "dimensions": 1024,
+  "max_samples": null,
+  "random_state": 1024
+}
